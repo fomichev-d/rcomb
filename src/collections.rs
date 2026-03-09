@@ -64,14 +64,13 @@ fn move_refs_mut2<'a, G, T>(tuple: &'a mut (G, T)) -> (&'a G, &'a mut T) { (&tup
 
 // map & set traits
 
-pub trait CombMapBase<G: CombEq, T>: Default {
+pub trait CombMapBase<G: CombEq, T>: Default + Extend<(G, T)> {
 	fn new() -> Self { Self::default() }
 	fn clear(&mut self);
 	fn len(&self) -> usize;
 	fn insert(&mut self, g: G, val: T) -> Option<T>;
 	fn insert_unchecked(&mut self, g: G, val: T);
 	fn remove(&mut self, g: &G) -> Option<T>;
-	fn extend<I: IntoIterator<Item=(G, T)>>(&mut self, it: I);
 	fn extend_unchecked<I: IntoIterator<Item=(G, T)>>(&mut self, it: I);
 	fn retain<F: Fn(&(G, T)) -> bool + Copy + Sync>(&mut self, f: F);
 	fn dedup(&mut self);
@@ -85,14 +84,13 @@ pub trait CombMapBase<G: CombEq, T>: Default {
 	fn keys<'a>(&'a self) -> impl Iterator<Item=&'a G> + Sync + Send where G: 'a + Sync, T: 'a + Sync;
 }
 
-pub trait CombSetBase<G: CombEq>: Default {
+pub trait CombSetBase<G: CombEq>: Default + Extend<G> {
 	fn new() -> Self { Self::default() }
 	fn clear(&mut self);
 	fn len(&self) -> usize;
 	fn insert(&mut self, g: G);
 	fn insert_unchecked(&mut self, g: G);
 	fn remove(&mut self, g: &G);
-	fn extend<I: IntoIterator<Item=G>>(&mut self, it: I);
 	fn extend_unchecked<I: IntoIterator<Item=G>>(&mut self, it: I);
 	fn retain<F: Fn(&G) -> bool + Copy + Sync>(&mut self, f: F);
 	fn dedup(&mut self);
@@ -136,6 +134,14 @@ impl<G: CombEq + Clone, T, S: CombStats<G>> CombMap<G, T, S> {
 				))
 				.collect(),
 			stats: self.stats.clone()
+		}
+	}
+}
+impl<G: CombEq, T, S: CombStats<G>> Extend<(G, T)> for CombMap<G, T, S> {
+	#[inline]
+	fn extend<I>(&mut self, it: I) where I: IntoIterator<Item=(G, T)> {
+		for (g, val) in it {
+			self.insert(g, val);
 		}
 	}
 }
@@ -266,12 +272,6 @@ impl<G: CombEq, T, S: CombStats<G>> CombMapBase<G, T> for CombMap<G, T, S> {
 				}
 			}
 			None => None
-		}
-	}
-	#[inline]
-	fn extend<I: IntoIterator<Item=(G, T)>>(&mut self, it: I) {
-		for (g, val) in it {
-			self.insert(g, val);
 		}
 	}
 	#[inline]
@@ -502,6 +502,16 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> std::ops::IndexMu
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
+impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> Extend<(G, T)> for CombParMap<G, T, S> {
+	#[inline]
+	fn extend<I>(&mut self, it: I) where I: IntoIterator<Item=(G, T)> {
+		for (g, val) in it {
+			self.insert(g, val);
+		}
+	}
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+#[cfg(feature = "rayon")]
 impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> CombMapBase<G, T> for CombParMap<G, T, S> {
 	fn clear(&mut self) {
 		self.buckets.clear();
@@ -556,13 +566,6 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> CombMapBase<G, T>
 				}
 			}
 			None => None
-		}
-	}
-	// TODO: sort out `I` bounds and make it truly parallel
-	#[inline]
-	fn extend<I: IntoIterator<Item=(G, T)>>(&mut self, it: I) {
-		for (g, val) in it {
-			self.insert(g, val);
 		}
 	}
 	// TODO: sort out `I` bounds and make it truly parallel
@@ -713,6 +716,12 @@ impl<'a, G: CombEq + Sync, M: CombMapBase<G, ()>> IntoParallelIterator for &'a m
 		self.0.into_par_iter().map(entry_key_ref_mut2 as fn((&'a G, &'a mut ())) -> &'a G)
 	}
 }
+impl<G: CombEq, M: CombMapBase<G, ()>> Extend<G> for CombSetImpl<G, M> {
+	#[inline]
+	fn extend<I>(&mut self, it: I) where I: IntoIterator<Item=G> {
+		self.0.extend(it.into_iter().map(|g| (g, ())))
+	}
+}
 impl<G: CombEq, M: CombMapBase<G, ()>> CombSetBase<G> for CombSetImpl<G, M> {
 	#[inline]
 	fn len(&self) -> usize { self.0.len() }
@@ -724,8 +733,6 @@ impl<G: CombEq, M: CombMapBase<G, ()>> CombSetBase<G> for CombSetImpl<G, M> {
 	fn insert_unchecked(&mut self, g: G) { self.0.insert_unchecked(g, ()) }
 	#[inline]
 	fn remove(&mut self, g: &G) { self.0.remove(g); }
-	#[inline]
-	fn extend<I: IntoIterator<Item=G>>(&mut self, it: I) { self.0.extend(it.into_iter().map(|g| (g, ()))) }
 	#[inline]
 	fn extend_unchecked<I: IntoIterator<Item=G>>(&mut self, it: I) { self.0.extend_unchecked(it.into_iter().map(|g| (g, ()))) }
 	#[inline]
