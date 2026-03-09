@@ -1,6 +1,6 @@
 [package]
 name = "rcomb"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 keywords = ["combinatorics", "mathematics"]
@@ -13,5 +13,10 @@ readme = "README.md"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[features]
+petgraph = ["dep:petgraph", "dep:itertools"]
+
 [dependencies]
 rayon = { version = "1.11.0", optional = true }
+petgraph = { version = "0.8.3", optional = true }
+itertools = { version = "0.14.0", optional = true }

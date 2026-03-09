@@ -1,4 +1,4 @@
-use crate::object::*;
+use crate::objects::*;
 
 #[cfg(feature = "rayon")]
 use rayon::iter::{
@@ -367,21 +367,25 @@ impl<G: CombEq, T, S: CombStats<G>> CombMap<G, T, S> {
 
 // CombParMap implementation
 
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 #[derive(Debug)]
 pub struct CombParMap<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G> = ()> {
 	buckets: HashMap<Vec<usize>, Vec<(G, T)>>,
 	stats: S
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> HasStats<G> for CombParMap<G, T, S> {
 	type Stats = S;
 	fn stats(&self) -> &Self::Stats { &self.stats }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> Default for CombParMap<G, T, S> {
 	fn default() -> Self { Self { buckets: HashMap::new(), stats: S::default() } }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<G: CombEq + Send + Sync + Clone, T: Send + Sync + Clone, S: CombStats<G>> Clone for CombParMap<G, T, S> {
 	fn clone(&self) -> Self {
@@ -391,6 +395,7 @@ impl<G: CombEq + Send + Sync + Clone, T: Send + Sync + Clone, S: CombStats<G>> C
 		}
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<G: CombEq + Send + Sync + Clone, T: Send + Sync, S: CombStats<G>> CombParMap<G, T, S> {
 	pub fn clone_with<F: Fn(&T) -> T>(&self, clone: F) -> Self {
@@ -407,6 +412,7 @@ impl<G: CombEq + Send + Sync + Clone, T: Send + Sync, S: CombStats<G>> CombParMa
 		}
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> FromIterator<(G, T)> for CombParMap<G, T, S> {
 	fn from_iter<I: IntoIterator<Item = (G, T)>>(it: I) -> Self {
@@ -415,6 +421,7 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> FromIterator<(G, 
 		map
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> IntoIterator for CombParMap<G, T, S> {
 	type IntoIter = std::iter::FlatMap<std::collections::hash_map::IntoIter<Vec<usize>, Vec<(G, T)>>, Vec<(G, T)>, fn((Vec<usize>, Vec<(G, T)>)) -> Vec<(G, T)>>;
@@ -423,6 +430,7 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> IntoIterator for 
 		self.buckets.into_iter().flat_map(bucket_values as fn((Vec<usize>, Vec<(G, T)>)) -> Vec<(G, T)>)
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<'a, G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> IntoIterator for &'a CombParMap<G, T, S> {
 	type IntoIter = std::iter::Map<std::iter::FlatMap<std::collections::hash_map::Iter<'a, Vec<usize>, Vec<(G, T)>>, &'a Vec<(G, T)>, fn((&'a Vec<usize>, &'a Vec<(G, T)>)) -> &'a Vec<(G, T)>>, fn(&'a (G, T)) -> (&'a G, &'a T)>;
@@ -433,6 +441,7 @@ impl<'a, G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> IntoIterator 
 			.map(move_refs as fn(&'a (G, T)) -> (&'a G, &'a T))
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<'a, G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> IntoIterator for &'a mut CombParMap<G, T, S> {
 	type IntoIter = std::iter::Map<std::iter::FlatMap<std::collections::hash_map::IterMut<'a, Vec<usize>, Vec<(G, T)>>, &'a mut Vec<(G, T)>, fn((&'a Vec<usize>, &'a mut Vec<(G, T)>)) -> &'a mut Vec<(G, T)>>, fn(&'a mut (G, T)) -> (&'a G, &'a mut T)>;
@@ -443,6 +452,7 @@ impl<'a, G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> IntoIterator 
 			.map(move_refs_mut2 as fn(&'a mut (G, T)) -> (&'a G, &'a mut T))
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> IntoParallelIterator for CombParMap<G, T, S> {
 	type Iter = rayon::iter::FlatMap<rayon::collections::hash_map::IntoIter<Vec<usize>, Vec<(G, T)>>, fn((Vec<usize>, Vec<(G, T)>)) -> Vec<(G, T)>>;
@@ -451,6 +461,7 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> IntoParallelItera
 		self.buckets.into_par_iter().flat_map(bucket_values as fn((Vec<usize>, Vec<(G, T)>)) -> Vec<(G, T)>)
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<'a, G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> IntoParallelIterator for &'a CombParMap<G, T, S> {
 	type Iter = rayon::iter::Map<rayon::iter::FlatMap<rayon::collections::hash_map::Iter<'a, Vec<usize>, Vec<(G, T)>>, fn((&'a Vec<usize>, &'a Vec<(G, T)>)) -> &'a Vec<(G, T)>>, fn(&'a (G, T)) -> (&'a G, &'a T)>;
@@ -461,6 +472,7 @@ impl<'a, G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> IntoParallelI
 			.map(move_refs as fn(&'a (G, T)) -> (&'a G, &'a T))
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<'a, G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> IntoParallelIterator for &'a mut CombParMap<G, T, S> {
 	type Iter = rayon::iter::Map<rayon::iter::FlatMap<rayon::collections::hash_map::IterMut<'a, Vec<usize>, Vec<(G, T)>>, fn((&'a Vec<usize>, &'a mut Vec<(G, T)>)) -> &'a mut Vec<(G, T)>>, fn(&'a mut (G, T)) -> (&'a G, &'a mut T)>;
@@ -471,6 +483,7 @@ impl<'a, G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> IntoParallelI
 			.map(move_refs_mut2 as fn(&'a mut (G, T)) -> (&'a G, &'a mut T))
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> std::ops::Index<&G> for CombParMap<G, T, S> {
 	type Output = T;
@@ -479,6 +492,7 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> std::ops::Index<&
 		self.get(key).expect("no entry found for key")
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> std::ops::IndexMut<&G> for CombParMap<G, T, S> {
 	#[inline]
@@ -486,6 +500,7 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> std::ops::IndexMu
 		self.get_mut(key).expect("no entry found for key")
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> CombMapBase<G, T> for CombParMap<G, T, S> {
 	fn clear(&mut self) {
@@ -612,6 +627,7 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> CombMapBase<G, T>
 		self.into_iter().map(|(g, _)| g)
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> CombParMap<G, T, S> {
 	pub fn efficiency(&self) -> f64 {
@@ -640,6 +656,7 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> CombParMap<G, T, 
 #[derive(Debug)]
 pub struct CombSetImpl<G: CombEq, M: CombMapBase<G, ()>>(M, std::marker::PhantomData<G>);
 pub type CombSet<G, S = ()> = CombSetImpl<G, CombMap<G, (), S>>;
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 pub type CombParSet<G, S = ()> = CombSetImpl<G, CombParMap<G, (), S>>;
 impl<G: CombEq, M: CombMapBase<G, ()>> Default for CombSetImpl<G, M> {
@@ -669,6 +686,7 @@ impl<'a, G: CombEq, M: CombMapBase<G, ()>> IntoIterator for &'a CombSetImpl<G, M
 		self.0.into_iter().map(entry_key_ref as fn((&'a G, &'a ())) -> &'a G)
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<G: CombEq + Send, M: CombMapBase<G, ()> + IntoParallelIterator<Item=(G, ())>> IntoParallelIterator for CombSetImpl<G, M> {
 	type Iter = rayon::iter::Map<M::Iter, fn((G, ())) -> G>;
@@ -677,6 +695,7 @@ impl<G: CombEq + Send, M: CombMapBase<G, ()> + IntoParallelIterator<Item=(G, ())
 		self.0.into_par_iter().map(entry_key as fn((G, ())) -> G)
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<'a, G: CombEq + Sync, M: CombMapBase<G, ()>> IntoParallelIterator for &'a CombSetImpl<G, M> where &'a M: IntoParallelIterator<Item=(&'a G, &'a ())> {
 	type Iter = rayon::iter::Map<<&'a M as IntoParallelIterator>::Iter, fn((&'a G, &'a ())) -> &'a G>;
@@ -685,6 +704,7 @@ impl<'a, G: CombEq + Sync, M: CombMapBase<G, ()>> IntoParallelIterator for &'a C
 		self.0.into_par_iter().map(entry_key_ref as fn((&'a G, &'a ())) -> &'a G)
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<'a, G: CombEq + Sync, M: CombMapBase<G, ()>> IntoParallelIterator for &'a mut CombSetImpl<G, M> where &'a mut M: IntoParallelIterator<Item=(&'a G, &'a mut ())> {
 	type Iter = rayon::iter::Map<<&'a mut M as IntoParallelIterator>::Iter, fn((&'a G, &'a mut ())) -> &'a G>;
