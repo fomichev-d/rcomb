@@ -10,14 +10,3 @@ pub use petgraph;
 
 pub mod objects;
 pub mod collections;
-
-#[cfg(test)]
-mod tests {
-    use super::objects::*;
-    use super::collections::*;
-
-    #[test]
-    fn it_works() {
-        assert!(true);
-    }
-}

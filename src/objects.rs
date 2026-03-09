@@ -16,7 +16,8 @@ pub trait Grading<T: Copy + Eq + Ord + Send + Sync = usize> {
 
 pub trait CombEnum<T: Copy + Eq + Ord + Send + Sync>: Grading<T> {
 	type Iter: Iterator<Item=Self>;
-	fn iterate(degree: T) -> Self::Iter;
+	fn iterate_deg(degree: T) -> Self::Iter;
+	fn count_deg(_degree: T) -> Option<usize> { None }
 }
 
 // petgraph integration

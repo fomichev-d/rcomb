@@ -64,23 +64,78 @@ fn move_refs_mut2<'a, G, T>(tuple: &'a mut (G, T)) -> (&'a G, &'a mut T) { (&tup
 
 // map & set traits
 
+/// A map trait where key equality is considered up to isomorphism.
+///
+/// It should be used when checking key isomorphism is significantly more computationally expensive than computing a hash.
+/// The hash [must be invariant under isomorphism](`CombEq`).
+///
+/// The map will normally contain at most one entry for each key isomorphism class.
+/// For performance reasons, it is possible to temporarily violate this property by using [`insert_unchecked`](`CombMapBase::insert_unchecked`) or [`extend_unchecked`](`CombMapBase::extend_unchecked`).
+/// Use [`dedup`](`CompMapBase::dedup`) after these methods to restore the guarantees unless it is known they indeed were not violated.
 pub trait CombMapBase<G: CombEq, T>: Default + Extend<(G, T)> {
+	/// Creates an empty map.
 	fn new() -> Self { Self::default() }
+	/// Clears the map, removing all key-value pairs.
 	fn clear(&mut self);
+	/// Returns the number of elements in the map.
+	///
+	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](`CompMapBase::insert_unchecked`)), they will be counted separately.
+	/// To restore key uniqueness, use [`dedup`](`CompMapBase::dedup`).
 	fn len(&self) -> usize;
+	/// Inserts a key-value pair into the map.
+	///
+	/// If the map did not have this key present, `None` is returned.
+	///
+	/// If the map did have this key present, the value is updated and the old value is returned.
+	/// The key is not updated though; this matters for keys that can be isomorphic without being identical.
+	///
+	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](`CompMapBase::insert_unchecked`)), an arbitrary one is picked to be replaced.
+	/// To restore key uniqueness, use [`dedup`](`CompMapBase::dedup`).
 	fn insert(&mut self, g: G, val: T) -> Option<T>;
+	/// Inserts a key-value pair into the map, assuming the key is not isomorphic to any present ones.
+	///
+	/// If the map did have an isomorphic key present, it will now store several entries with isomorphic keys.
+	/// To restore key uniqueness, use [`dedup`](`CompMapBase::dedup`).
 	fn insert_unchecked(&mut self, g: G, val: T);
+	/// Removes a key from the map, returning the value at the key if an isomorphic key was previously in the map.
+	///
+	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](`CompMapBase::insert_unchecked`)), an arbitrary one is picked.
+	/// To restore key uniqueness, use [`dedup`](`CompMapBase::dedup`).
 	fn remove(&mut self, g: &G) -> Option<T>;
+	/// Extends the map with the contents of the iterator, assuming the keys are not isomorphic to each other or any isomorphic ones.
+	///
+	/// If the map or the iterator did have isomorphic keys, it will now store several entries with isomorphic keys.
+	/// To restore key uniqueness, use [`dedup`](`CompMapBase::dedup`).
 	fn extend_unchecked<I: IntoIterator<Item=(G, T)>>(&mut self, it: I);
-	fn retain<F: Fn(&(G, T)) -> bool + Copy + Sync>(&mut self, f: F);
+	/// Retains only the elements specified by the predicate.
+	///
+	/// In other words, remove all pairs `(k, v)` for which `f(&k, &mut v)` returns `false`.
+	/// The elements are visited in unsorted (and unspecified) order.
+	fn retain<F: Fn(&G, &mut T) -> bool + Copy + Sync>(&mut self, f: F);
+	/// Remove entries with duplicate keys (up to isomorphism).
+	/// The choice of the remaining key is arbitrary.
 	fn dedup(&mut self);
+	/// Returns a reference to the value corresponding to the key.
+	///
+	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](`CompMapBase::insert_unchecked`)), an arbitrary one is picked.
+	/// To restore key uniqueness, use [`dedup`](`CompMapBase::dedup`).
 	fn get(&self, g: &G) -> Option<&T>;
+	/// Returns a mutable reference to the value corresponding to the key.
+	///
+	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](`CompMapBase::insert_unchecked`)), an arbitrary one is picked.
+	/// To restore key uniqueness, use [`dedup`](`CompMapBase::dedup`).
 	fn get_mut(&mut self, g: &G) -> Option<&mut T>;
+	/// Returns `true` if the map contains a value for the specified key.
 	fn contains_key(&self, g: &G) -> bool {
 		self.get(g).is_some()
 	}
+	/// An iterator visiting all key-value pairs in arbitrary order.
+	/// The iterator element type is `(&'a G, &'a T)`.
 	fn iter<'a>(&'a self) -> impl Iterator<Item=(&'a G, &'a T)> + Sync + Send where G: 'a + Sync, T: 'a + Sync;
+	/// An iterator visiting all key-value pairs in arbitrary order, with mutable references to the values.
+	/// The iterator element type is `(&'a G, &'a mut T)`.
 	fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item=(&'a G, &'a mut T)> + Sync + Send where G: 'a + Sync + Send, T: 'a + Sync + Send;
+	/// An iterator visiting all keys in arbitrary order. The iterator element type is `&'a G`.
 	fn keys<'a>(&'a self) -> impl Iterator<Item=&'a G> + Sync + Send where G: 'a + Sync, T: 'a + Sync;
 }
 
@@ -281,9 +336,9 @@ impl<G: CombEq, T, S: CombStats<G>> CombMapBase<G, T> for CombMap<G, T, S> {
 		}
 	}
 	#[inline]
-	fn retain<F: Fn(&(G, T)) -> bool + Copy + Sync>(&mut self, f: F) {
+	fn retain<F: Fn(&G, &mut T) -> bool + Copy + Sync>(&mut self, f: F) {
 		self.buckets.iter_mut().for_each(|(_, bucket)| {
-			bucket.retain(f);
+			bucket.retain_mut(|(g, v)| f(g, v));
 		});
 		self.buckets.retain(|_, v| { v.len() > 0 });
 	}
@@ -576,9 +631,9 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> CombMapBase<G, T>
 		}
 	}
 	#[inline]
-	fn retain<F: Fn(&(G, T)) -> bool + Copy + Sync>(&mut self, f: F) {
+	fn retain<F: Fn(&G, &mut T) -> bool + Copy + Sync>(&mut self, f: F) {
 		self.buckets.par_iter_mut().for_each(|(_, bucket)| {
-			bucket.retain(f);
+			bucket.retain_mut(|(g, v)| f(g, v));
 		});
 		self.buckets.retain(|_, v| { v.len() > 0 });
 	}
@@ -736,7 +791,7 @@ impl<G: CombEq, M: CombMapBase<G, ()>> CombSetBase<G> for CombSetImpl<G, M> {
 	#[inline]
 	fn extend_unchecked<I: IntoIterator<Item=G>>(&mut self, it: I) { self.0.extend_unchecked(it.into_iter().map(|g| (g, ()))) }
 	#[inline]
-	fn retain<F: Fn(&G) -> bool + Copy + Sync>(&mut self, f: F) { self.0.retain(|(g, _)| f(g)) }
+	fn retain<F: Fn(&G) -> bool + Copy + Sync>(&mut self, f: F) { self.0.retain(|g, ()| f(g)) }
 	#[inline]
 	fn dedup(&mut self) { self.0.dedup() }
 	#[inline]
@@ -744,4 +799,54 @@ impl<G: CombEq, M: CombMapBase<G, ()>> CombSetBase<G> for CombSetImpl<G, M> {
 
 	#[inline]
 	fn iter<'a>(&'a self) -> impl Iterator<Item=&'a G> + Sync + Send where G: 'a + Sync { self.0.keys() }
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::objects::*;
+	use crate::collections::*;
+	impl CombEq for usize {
+		fn hash(&self) -> Vec<usize> { vec![self % 2] }
+		fn is_isomorphic(&self, other: &Self) -> bool { self == other }
+	}
+	impl Grading<usize> for usize {
+		fn degree(&self) -> usize { *self }
+	}
+	#[test]
+	fn test_map() {
+		let mut map = CombMap::<usize, usize>::new();
+		assert_eq!(map.len(), 0);
+		assert!(map.insert(0, 1).is_none());
+		assert_eq!(map.len(), 1);
+		assert!(map.insert(1, 2).is_none());
+		assert_eq!(map.len(), 2);
+		assert!(map.insert(2, 4).is_none());
+		assert_eq!(map.len(), 3);
+		assert_eq!(map[&0], 1);
+		assert_eq!(map[&1], 2);
+		assert_eq!(map[&2], 4);
+		assert_eq!(map.insert(2, 3), Some(4));
+		assert_eq!(map[&2], 3);
+		assert_eq!(map.len(), 3);
+		map.clear();
+		assert_eq!(map.len(), 0);
+		for i in 0..9 { map.insert(i, i % 3); }
+		assert_eq!(map.len(), 9);
+		map.retain(|_, v| *v == 0);
+		assert_eq!(map.len(), 3);
+		let mut keys: Vec<usize> = map.keys().copied().collect();
+		keys.sort();
+		assert_eq!(keys, vec![0, 3, 6]);
+		map.extend(keys.iter().map(|&i| (i + 1, 1)));
+		assert_eq!(map.len(), 6);
+		map.insert_unchecked(0, 111);
+		assert_eq!(map.len(), 7);
+		map.extend_unchecked(keys.iter().map(|&i| (i + 1, 222)));
+		assert_eq!(map.len(), 10);
+		assert_eq!(map.remove(&6), Some(0));
+		assert_eq!(map.len(), 9);
+		map.dedup();
+		assert_eq!(map.len(), 5);
+		assert_eq!(map.contains_key(&6), false);
+	}
 }
