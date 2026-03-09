@@ -1,0 +1,12 @@
+[package]
+name = "rcomb"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+keywords = ["combinatorics", "mathematics"]
+categories = ["algorithms", "data-structures", "mathematics"]
+description = "Combinatorial traits, collections of combinatorial objects"
+readme = "README.md"
+
+[dependencies]
+rayon = { version = "1.11.0", optional = true }
