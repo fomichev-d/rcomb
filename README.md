@@ -1,5 +1,5 @@
 # rcomb
-[![Version info](https://img.shields.io/crates/v/rcomb.svg)](https://crates.io/crates/rcomb) [![Docs](https://img.shields.io/docsrs/v/rcomb.svg)](https://docs.rs/crates/rcomb)
+[![Version info](https://img.shields.io/crates/v/rcomb.svg)](https://crates.io/crates/rcomb) [![Docs](https://img.shields.io/docsrs/rcomb)](https://docs.rs/rcomb/latest)
 
 Combinatorial objects, traits, collections implemented in Rust.
 
