@@ -1,4 +1,9 @@
-Combinatorial traits, collections of combinatorial objects implemented in Rust.
+# rcomb
+[![Version info](https://img.shields.io/crates/v/rcomb.svg)](https://crates.io/crates/rcomb) [![Docs](https://img.shields.io/docsrs/v/rcomb.svg)](https://docs.rs/crates/rcomb)
+
+Combinatorial objects, traits, collections implemented in Rust.
+
+Not stable yet.
 
 ## License
 

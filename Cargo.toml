@@ -6,7 +6,7 @@ license = "MIT OR Apache-2.0"
 keywords = ["combinatorics", "mathematics"]
 categories = ["algorithms", "data-structures", "mathematics"]
 repository = "https://github.com/fomichev-d/rcomb"
-description = "Combinatorial traits, collections of combinatorial objects"
+description = "Combinatorial objects, traits, collections"
 readme = "README.md"
 
 [dependencies]
