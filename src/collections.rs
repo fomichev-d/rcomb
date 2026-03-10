@@ -44,10 +44,13 @@ impl<T: Copy + Eq + Ord + Ord + Send + Sync + Default, G: Grading<T>> CombStats<
 
 // helpers
 
+#[cfg(feature = "rayon")]
 #[inline]
 fn bucket_values<G, T>(tuple: (Vec<usize>, Vec<(G, T)>)) -> Vec<(G, T)> { tuple.1 }
+#[cfg(feature = "rayon")]
 #[inline]
 fn bucket_values_ref<'a, G, T>(tuple: (&'a Vec<usize>, &'a Vec<(G, T)>)) -> &'a Vec<(G, T)> { tuple.1 }
+#[cfg(feature = "rayon")]
 #[inline]
 fn bucket_values_ref_mut<'a, G, T>(tuple: (&'a Vec<usize>, &'a mut Vec<(G, T)>)) -> &'a mut Vec<(G, T)> { tuple.1 }
 #[inline]
@@ -71,7 +74,7 @@ fn move_refs_mut2<'a, G, T>(tuple: &'a mut (G, T)) -> (&'a G, &'a mut T) { (&tup
 ///
 /// The map will normally contain at most one entry for each key isomorphism class.
 /// For performance reasons, it is possible to temporarily violate this property by using [`insert_unchecked`](`CombMapBase::insert_unchecked`) or [`extend_unchecked`](`CombMapBase::extend_unchecked`).
-/// Use [`dedup`](`CompMapBase::dedup`) after these methods to restore the guarantees unless it is known they indeed were not violated.
+/// Use [`dedup`](`CombMapBase::dedup`) after these methods to restore the guarantees unless it is known they indeed were not violated.
 pub trait CombMapBase<G: CombEq, T>: Default + Extend<(G, T)> {
 	/// Creates an empty map.
 	fn new() -> Self { Self::default() }
@@ -79,8 +82,8 @@ pub trait CombMapBase<G: CombEq, T>: Default + Extend<(G, T)> {
 	fn clear(&mut self);
 	/// Returns the number of elements in the map.
 	///
-	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](`CompMapBase::insert_unchecked`)), they will be counted separately.
-	/// To restore key uniqueness, use [`dedup`](`CompMapBase::dedup`).
+	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](`CombMapBase::insert_unchecked`)), they will be counted separately.
+	/// To restore key uniqueness, use [`dedup`](`CombMapBase::dedup`).
 	fn len(&self) -> usize;
 	/// Inserts a key-value pair into the map.
 	///
@@ -89,23 +92,23 @@ pub trait CombMapBase<G: CombEq, T>: Default + Extend<(G, T)> {
 	/// If the map did have this key present, the value is updated and the old value is returned.
 	/// The key is not updated though; this matters for keys that can be isomorphic without being identical.
 	///
-	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](`CompMapBase::insert_unchecked`)), an arbitrary one is picked to be replaced.
-	/// To restore key uniqueness, use [`dedup`](`CompMapBase::dedup`).
+	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](`CombMapBase::insert_unchecked`)), an arbitrary one is picked to be replaced.
+	/// To restore key uniqueness, use [`dedup`](`CombMapBase::dedup`).
 	fn insert(&mut self, g: G, val: T) -> Option<T>;
 	/// Inserts a key-value pair into the map, assuming the key is not isomorphic to any present ones.
 	///
 	/// If the map did have an isomorphic key present, it will now store several entries with isomorphic keys.
-	/// To restore key uniqueness, use [`dedup`](`CompMapBase::dedup`).
+	/// To restore key uniqueness, use [`dedup`](`CombMapBase::dedup`).
 	fn insert_unchecked(&mut self, g: G, val: T);
 	/// Removes a key from the map, returning the value at the key if an isomorphic key was previously in the map.
 	///
-	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](`CompMapBase::insert_unchecked`)), an arbitrary one is picked.
-	/// To restore key uniqueness, use [`dedup`](`CompMapBase::dedup`).
+	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](`CombMapBase::insert_unchecked`)), an arbitrary one is picked.
+	/// To restore key uniqueness, use [`dedup`](`CombMapBase::dedup`).
 	fn remove(&mut self, g: &G) -> Option<T>;
 	/// Extends the map with the contents of the iterator, assuming the keys are not isomorphic to each other or any isomorphic ones.
 	///
 	/// If the map or the iterator did have isomorphic keys, it will now store several entries with isomorphic keys.
-	/// To restore key uniqueness, use [`dedup`](`CompMapBase::dedup`).
+	/// To restore key uniqueness, use [`dedup`](`CombMapBase::dedup`).
 	fn extend_unchecked<I: IntoIterator<Item=(G, T)>>(&mut self, it: I);
 	/// Retains only the elements specified by the predicate.
 	///
@@ -117,13 +120,13 @@ pub trait CombMapBase<G: CombEq, T>: Default + Extend<(G, T)> {
 	fn dedup(&mut self);
 	/// Returns a reference to the value corresponding to the key.
 	///
-	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](`CompMapBase::insert_unchecked`)), an arbitrary one is picked.
-	/// To restore key uniqueness, use [`dedup`](`CompMapBase::dedup`).
+	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](`CombMapBase::insert_unchecked`)), an arbitrary one is picked.
+	/// To restore key uniqueness, use [`dedup`](`CombMapBase::dedup`).
 	fn get(&self, g: &G) -> Option<&T>;
 	/// Returns a mutable reference to the value corresponding to the key.
 	///
-	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](`CompMapBase::insert_unchecked`)), an arbitrary one is picked.
-	/// To restore key uniqueness, use [`dedup`](`CompMapBase::dedup`).
+	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](`CombMapBase::insert_unchecked`)), an arbitrary one is picked.
+	/// To restore key uniqueness, use [`dedup`](`CombMapBase::dedup`).
 	fn get_mut(&mut self, g: &G) -> Option<&mut T>;
 	/// Returns `true` if the map contains a value for the specified key.
 	fn contains_key(&self, g: &G) -> bool {
@@ -208,28 +211,24 @@ impl<G: CombEq, T, S: CombStats<G>> FromIterator<(G, T)> for CombMap<G, T, S> {
 	}
 }
 impl<G: CombEq, T, S: CombStats<G>> IntoIterator for CombMap<G, T, S> {
-	type IntoIter = std::iter::FlatMap<std::collections::hash_map::IntoIter<Vec<usize>, Vec<(G, T)>>, Vec<(G, T)>, fn((Vec<usize>, Vec<(G, T)>)) -> Vec<(G, T)>>;
+	type IntoIter = std::iter::Flatten<std::collections::hash_map::IntoValues<Vec<usize>, Vec<(G, T)>>>;
 	type Item = (G, T);
 	fn into_iter(self) -> Self::IntoIter {
-		self.buckets.into_iter().flat_map(bucket_values as fn((Vec<usize>, Vec<(G, T)>)) -> Vec<(G, T)>)
+		self.buckets.into_values().flatten()
 	}
 }
 impl<'a, G: CombEq, T, S: CombStats<G>> IntoIterator for &'a CombMap<G, T, S> {
-	type IntoIter = std::iter::Map<std::iter::FlatMap<std::collections::hash_map::Iter<'a, Vec<usize>, Vec<(G, T)>>, &'a Vec<(G, T)>, fn((&'a Vec<usize>, &'a Vec<(G, T)>)) -> &'a Vec<(G, T)>>, fn(&'a (G, T)) -> (&'a G, &'a T)>;
+	type IntoIter = std::iter::Map<std::iter::Flatten<std::collections::hash_map::Values<'a, Vec<usize>, Vec<(G, T)>>>, fn(&'a (G, T)) -> (&'a G, &'a T)>;
 	type Item = (&'a G, &'a T);
 	fn into_iter(self) -> Self::IntoIter {
-		self.buckets.iter()
-			.flat_map(bucket_values_ref as fn((&'a Vec<usize>, &'a Vec<(G, T)>)) -> &'a Vec<(G, T)>)
-			.map(move_refs as fn(&'a (G, T)) -> (&'a G, &'a T))
+		self.buckets.values().flatten().map(move_refs as fn(&'a (G, T)) -> (&'a G, &'a T))
 	}
 }
 impl<'a, G: CombEq, T, S: CombStats<G>> IntoIterator for &'a mut CombMap<G, T, S> {
-	type IntoIter = std::iter::Map<std::iter::FlatMap<std::collections::hash_map::IterMut<'a, Vec<usize>, Vec<(G, T)>>, &'a mut Vec<(G, T)>, fn((&'a Vec<usize>, &'a mut Vec<(G, T)>)) -> &'a mut Vec<(G, T)>>, fn(&'a mut (G, T)) -> (&'a G, &'a mut T)>;
+	type IntoIter = std::iter::Map<std::iter::Flatten<std::collections::hash_map::ValuesMut<'a, Vec<usize>, Vec<(G, T)>>>, fn(&'a mut (G, T)) -> (&'a G, &'a mut T)>;
 	type Item = (&'a G, &'a mut T);
 	fn into_iter(self) -> Self::IntoIter {
-		self.buckets.iter_mut()
-			.flat_map(bucket_values_ref_mut as fn((&'a Vec<usize>, &'a mut Vec<(G, T)>)) -> &'a mut Vec<(G, T)>)
-			.map(move_refs_mut2 as fn(&'a mut (G, T)) -> (&'a G, &'a mut T))
+		self.buckets.values_mut().flatten().map(move_refs_mut2 as fn(&'a mut (G, T)) -> (&'a G, &'a mut T))
 	}
 }
 #[cfg(feature = "rayon")]
@@ -479,32 +478,28 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> FromIterator<(G, 
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> IntoIterator for CombParMap<G, T, S> {
-	type IntoIter = std::iter::FlatMap<std::collections::hash_map::IntoIter<Vec<usize>, Vec<(G, T)>>, Vec<(G, T)>, fn((Vec<usize>, Vec<(G, T)>)) -> Vec<(G, T)>>;
+	type IntoIter = std::iter::Flatten<std::collections::hash_map::IntoValues<Vec<usize>, Vec<(G, T)>>>;
 	type Item = (G, T);
 	fn into_iter(self) -> Self::IntoIter {
-		self.buckets.into_iter().flat_map(bucket_values as fn((Vec<usize>, Vec<(G, T)>)) -> Vec<(G, T)>)
+		self.buckets.into_values().flatten()
 	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<'a, G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> IntoIterator for &'a CombParMap<G, T, S> {
-	type IntoIter = std::iter::Map<std::iter::FlatMap<std::collections::hash_map::Iter<'a, Vec<usize>, Vec<(G, T)>>, &'a Vec<(G, T)>, fn((&'a Vec<usize>, &'a Vec<(G, T)>)) -> &'a Vec<(G, T)>>, fn(&'a (G, T)) -> (&'a G, &'a T)>;
+	type IntoIter = std::iter::Map<std::iter::Flatten<std::collections::hash_map::Values<'a, Vec<usize>, Vec<(G, T)>>>, fn(&'a (G, T)) -> (&'a G, &'a T)>;
 	type Item = (&'a G, &'a T);
 	fn into_iter(self) -> Self::IntoIter {
-		self.buckets.iter()
-			.flat_map(bucket_values_ref as fn((&'a Vec<usize>, &'a Vec<(G, T)>)) -> &'a Vec<(G, T)>)
-			.map(move_refs as fn(&'a (G, T)) -> (&'a G, &'a T))
+		self.buckets.values().flatten().map(move_refs as fn(&'a (G, T)) -> (&'a G, &'a T))
 	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 impl<'a, G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> IntoIterator for &'a mut CombParMap<G, T, S> {
-	type IntoIter = std::iter::Map<std::iter::FlatMap<std::collections::hash_map::IterMut<'a, Vec<usize>, Vec<(G, T)>>, &'a mut Vec<(G, T)>, fn((&'a Vec<usize>, &'a mut Vec<(G, T)>)) -> &'a mut Vec<(G, T)>>, fn(&'a mut (G, T)) -> (&'a G, &'a mut T)>;
+	type IntoIter = std::iter::Map<std::iter::Flatten<std::collections::hash_map::ValuesMut<'a, Vec<usize>, Vec<(G, T)>>>, fn(&'a mut (G, T)) -> (&'a G, &'a mut T)>;
 	type Item = (&'a G, &'a mut T);
 	fn into_iter(self) -> Self::IntoIter {
-		self.buckets.iter_mut()
-			.flat_map(bucket_values_ref_mut as fn((&'a Vec<usize>, &'a mut Vec<(G, T)>)) -> &'a mut Vec<(G, T)>)
-			.map(move_refs_mut2 as fn(&'a mut (G, T)) -> (&'a G, &'a mut T))
+		self.buckets.values_mut().flatten().map(move_refs_mut2 as fn(&'a mut (G, T)) -> (&'a G, &'a mut T))
 	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
