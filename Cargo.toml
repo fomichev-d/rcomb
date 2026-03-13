@@ -1,6 +1,6 @@
 [package]
 name = "rcomb"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 keywords = ["combinatorics", "mathematics"]
@@ -27,3 +27,4 @@ criterion = "0.8.2"
 [[bench]]
 name = "map"
 harness = false
+required-features = ["petgraph"]

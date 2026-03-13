@@ -6,35 +6,6 @@ use std::str::FromStr;
 
 use itertools::*;
 
-fn canonical(ends: &[u8]) -> Vec<u8> {
-	let n = ends.len();
-	(0..n)
-		.map(|shift| ends[shift..].iter().chain(&ends[..shift]).cloned().collect::<Vec<u8>>())
-		.map(|mut ends| {
-			let mut mapping: HashMap<u8, u8> = HashMap::new();
-			let mut k = 0;
-			for i in 0..n {
-				let x = ends[i];
-				match mapping.get(&x) {
-					Some(&y) => {
-						ends[i] = y;
-						mapping.remove(&x);
-					}
-					None => {
-						ends[i] = k;
-						mapping.insert(x, k);
-						k += 1;
-					}
-				}
-			}
-			ends
-		})
-		.sorted()
-		.next()
-		// if `ends` is non-empty, we are guaranteed to get a value
-		.unwrap_or(vec![])
-}
-
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ChordDiagram {
 	ends: Vec<u8>
@@ -68,15 +39,46 @@ impl CombEnum<usize> for ChordDiagram {
 		ChordDiagramIterator::new(degree)
 	}
 }
-impl ChordDiagram {
-	pub fn new(ends: Vec<u8>) -> Self {
-		assert!(ends.len() % 2 == 0);
-		let ends = canonical(&ends);
+impl CombCan for ChordDiagram {
+	type Input = Vec<u8>;
+	fn validate(ends: &Vec<u8>) -> bool { ends.len() % 2 == 0 }
+	fn canonicalise(ends: &mut Vec<u8>) {
+		let n = ends.len();
+		*ends = (0..n)
+			.map(|shift| ends[shift..].iter().chain(&ends[..shift]).cloned().collect::<Vec<u8>>())
+			.map(|mut ends| {
+				let mut mapping: HashMap<u8, u8> = HashMap::new();
+				let mut k = 0;
+				for i in 0..n {
+					let x = ends[i];
+					match mapping.get(&x) {
+						Some(&y) => {
+							ends[i] = y;
+							mapping.remove(&x);
+						}
+						None => {
+							ends[i] = k;
+							mapping.insert(x, k);
+							k += 1;
+						}
+					}
+				}
+				ends
+			})
+			.sorted()
+			.next()
+			// if `ends` is non-empty, we are guaranteed to get a value
+			.unwrap_or(vec![]);
+	}
+	unsafe fn from_raw(ends: Vec<u8>) -> Self {
 		Self { ends }
 	}
+}
+impl ChordDiagram {
+	pub fn ends(&self) -> &[u8] { &self.ends }
 	pub fn apply<T, F: FnOnce(&mut Vec<u8>) -> T>(&mut self, f: F) -> T {
 		let value = f(&mut self.ends);
-		self.ends = canonical(&self.ends);
+		Self::canonicalise(&mut self.ends);
 		value
 	}
 	pub fn neighbours(&self, chord: u8) -> Vec<u8> {
@@ -204,7 +206,8 @@ impl Iterator for ChordDiagramIterator {
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
 			if self.n_left == Some(0) { return None; }
-			let ends = canonical(&self.rooted.next()?);
+			let mut ends = self.rooted.next()?;
+			ChordDiagram::canonicalise(&mut ends);
 			match self.cache.insert(ends.clone(), ()) {
 				Some(()) => {}
 				None => {

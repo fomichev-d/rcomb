@@ -15,6 +15,23 @@ pub trait CombEnum<T: Copy + Eq + Ord + Send + Sync>: Grading<T> {
 	}
 }
 
+pub trait CombCan: Sized + Eq {
+	type Input;
+	fn validate(_input: &Self::Input) -> bool { true }
+	fn canonicalise(input: &mut Self::Input);
+	unsafe fn from_raw(input: Self::Input) -> Self;
+
+	fn new_unchecked(input: Self::Input) -> Self {
+		assert!(Self::validate(&input));
+		unsafe { Self::from_raw(input) }
+	}
+	fn new(mut input: Self::Input) -> Self {
+		assert!(Self::validate(&input));
+		Self::canonicalise(&mut input);
+		unsafe { Self::from_raw(input) }
+	}
+}
+
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 #[cfg(feature = "petgraph")]
 pub mod graphs;
