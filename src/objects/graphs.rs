@@ -1,13 +1,15 @@
-use crate::objects::*;
+use crate::*;
+use crate::io::csv::*;
 
 use petgraph::graph::{UnGraph, IndexType};
+use petgraph::graph6::*;
 use petgraph::visit::GetAdjacencyMatrix;
 use itertools::*;
 
 // petgraph integration
 
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
-impl<N, E, Ix: IndexType> Grading<usize> for UnGraph<N, E, Ix> {
+impl<N, E, Ix: IndexType> CombGrad<usize> for UnGraph<N, E, Ix> {
 	fn degree(&self) -> usize { self.node_count() }
 }
 
@@ -105,5 +107,17 @@ impl<N: NodeMatch, E: EdgeMatch, Ix: IndexType> CombEq for UnGraph<N, E, Ix> {
 	/// Neither graph must contains multiple edges.
 	fn is_isomorphic(&self, other: &Self) -> bool {
 		petgraph::algo::is_isomorphic_matching(self, other, |v1, v2| { v1 == v2 }, |e1, e2| { e1 == e2 })
+	}
+}
+
+#[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
+impl<Ix: IndexType> CombCsv for UnGraph<(), (), Ix> {
+	type Err = ();
+	const CSV_HEADER: &'static str = "graph6";
+	fn to_csv_string(&self) -> String {
+		self.graph6_string()
+	}
+	fn from_csv_string<S: AsRef<str>>(s: S) -> Result<Self, Self::Err> {
+		Ok(Self::from_graph6_string(s.as_ref().into()))
 	}
 }

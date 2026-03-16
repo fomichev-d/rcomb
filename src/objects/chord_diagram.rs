@@ -1,4 +1,5 @@
-use crate::objects::*;
+use crate::*;
+use crate::io::csv::*;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
@@ -30,7 +31,23 @@ impl FromStr for ChordDiagram {
 		Ok(Self { ends })
 	}
 }
-impl Grading<usize> for ChordDiagram {
+impl CombCsv for ChordDiagram {
+	type Err = ();
+	const CSV_HEADER: &'static str = "chord diagram";
+	fn to_csv_string(&self) -> String {
+		format!("{}", self.ends.iter().map(|end| end.to_string()).join(", "))
+	}
+	fn from_csv_string<S: AsRef<str>>(s: S) -> Result<Self, Self::Err> {
+		let s = s.as_ref();
+		// the empty string
+		if s.len() == 0 { return Ok(Self{ ends: vec![] }) }
+		let ends = s.split(" ")
+			.map(|a| a.parse::<u8>().map_err(|_| ()))
+			.collect::<Result<Vec<_>, ()>>()?;
+		Ok(Self { ends })
+	}
+}
+impl CombGrad<usize> for ChordDiagram {
 	fn degree(&self) -> usize { self.ends.len() / 2 }
 }
 impl CombEnum<usize> for ChordDiagram {
@@ -196,7 +213,9 @@ impl ChordDiagramIterator {
 		ChordDiagramIterator {
 			rooted: rooted_chord_diagrams(n),
 			cache: Default::default(),
-			// the result cannot be stored in usize for `n >= 19`
+			// The result cannot be stored in `u64` for `n >= 19`.
+			// For `usize` < `u64`, the overflow happens even earlier.
+			// We assume `usize` >= `u64`.
 			n_left: if n <= 18 { Some(n_chord_diagrams(n)) } else { None }
 		}
 	}
@@ -233,9 +252,9 @@ pub fn intersection_graphs<Ix: petgraph::graph::IndexType + Send + Sync>(size: u
 	ChordDiagram::iterate_deg(size)
 		.map(|diag| (diag.intersection_graph(), diag))
 		.filter({
-			let mut graph_set = CombParSet::<_>::new();
+			let mut graph_set = CombSet::<_>::new();
 			move |(g, _)| {
-				if graph_set.contains(g) {
+				if graph_set.par_contains(g) {
 					false
 				} else {
 					graph_set.insert_unchecked(g.clone());
