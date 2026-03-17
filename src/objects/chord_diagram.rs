@@ -1,5 +1,5 @@
 use crate::*;
-use crate::io::csv::*;
+use crate::io::*;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
@@ -24,7 +24,7 @@ impl FromStr for ChordDiagram {
 			s = &s[1..s.len() - 1];
 		}
 		// the empty string
-		if s.len() == 0 { return Ok(Self{ ends: vec![] }) }
+		if s.is_empty() { return Ok(Self{ ends: vec![] }) }
 		let ends = s.split(" ")
 			.map(|a| a.parse::<u8>().map_err(|_| ()))
 			.collect::<Result<Vec<_>, ()>>()?;
@@ -35,12 +35,12 @@ impl CombCsv for ChordDiagram {
 	type Err = ();
 	const CSV_HEADER: &'static str = "chord diagram";
 	fn to_csv_string(&self) -> String {
-		format!("{}", self.ends.iter().map(|end| end.to_string()).join(", "))
+		self.ends.iter().map(|end| end.to_string()).join(", ").to_string()
 	}
 	fn from_csv_string<S: AsRef<str>>(s: S) -> Result<Self, Self::Err> {
 		let s = s.as_ref();
 		// the empty string
-		if s.len() == 0 { return Ok(Self{ ends: vec![] }) }
+		if s.is_empty() { return Ok(Self{ ends: vec![] }) }
 		let ends = s.split(" ")
 			.map(|a| a.parse::<u8>().map_err(|_| ()))
 			.collect::<Result<Vec<_>, ()>>()?;
@@ -137,9 +137,9 @@ impl ChordDiagram {
 
 fn rooted_chord_diagrams(size: usize) -> Box<dyn Iterator<Item=Vec<u8>> + Sync + Send> {
 	if size == 0 {
-		return Box::new(std::iter::once(vec![]));
+		Box::new(std::iter::once(vec![]))
 	} else {
-		return Box::new(rooted_chord_diagrams(size - 1)
+		Box::new(rooted_chord_diagrams(size - 1)
 			.flat_map(move |mut diag| {
 				diag = [0, 0].iter()
 					.cloned()
@@ -152,24 +152,8 @@ fn rooted_chord_diagrams(size: usize) -> Box<dyn Iterator<Item=Vec<u8>> + Sync +
 						diag
 					})
 			})
-		);
+		)
 	}
-}
-fn binomial(n: u128, mut k: u128) -> u128 {
-	if k > n { return 0; }
-	k = u128::min(k, n - k);
-	let mut c_nk = 1;
-	for i in 1..=k {
-		c_nk *= n + 1 - i;
-		c_nk /= i;
-	}
-	c_nk
-}
-fn double_factorial(n: u128) -> u128 {
-	// the case of overflow, this is actually -1
-	if n == u128::MAX { return 1; }
-	let k0 = if n % 2 == 0 { 2 } else { 1 };
-	(k0..=n).step_by(2).product()
 }
 fn alpha(p: u128, q: u128) -> u128 {
 	if q % 2 == 0 {
@@ -178,28 +162,10 @@ fn alpha(p: u128, q: u128) -> u128 {
 		q.pow((p / 2) as u32) * double_factorial(p - 1)
 	}
 }
-fn euler_phi(mut n: u128) -> u128 {
-	let factorisation = primefactor::PrimeFactors::factorize(n as u128);
-	let primes = factorisation.factors().iter().map(|factor| factor.integer);
-	for p in primes {
-		n -= n / p;
-	}
-	n
-}
-fn divisors(n: u128) -> Vec<u128> {
-	use divisors::get_divisors;
-
-	let mut divisors = vec![1];
-	divisors.extend(get_divisors(n));
-	if divisors.iter().last() != Some(&n) {
-		divisors.push(n);
-	}
-	divisors
-}
 fn n_chord_diagrams(n: usize) -> usize {
 	if n == 0 { return 1; }
 	let count = divisors(2 * n as u128).into_iter()
-		.map(|p| alpha(2 * n as u128 / p as u128, p as u128) * euler_phi(p as u128))
+		.map(|p| alpha(2 * n as u128 / p, p) * euler_phi(p))
 		.sum::<u128>() / (2 * n as u128);
 	count as usize
 }
@@ -245,10 +211,11 @@ impl Iterator for ChordDiagramIterator {
 	}
 }
 
+//#[cfg(any(all(feature = "petgraph", feature = "rayon"), doc))]
 #[cfg_attr(docsrs, doc(cfg(all(feature = "petgraph", feature = "rayon"))))]
 #[cfg(all(feature = "petgraph", feature = "rayon"))]
 pub fn intersection_graphs<Ix: petgraph::graph::IndexType + Send + Sync>(size: usize) -> impl Iterator<Item=(petgraph::graph::UnGraph<(), (), Ix>, ChordDiagram)> + Sync + Send {
-	use crate::collections::*;
+	use crate::collections::set::*;
 	ChordDiagram::iterate_deg(size)
 		.map(|diag| (diag.intersection_graph(), diag))
 		.filter({
@@ -263,10 +230,11 @@ pub fn intersection_graphs<Ix: petgraph::graph::IndexType + Send + Sync>(size: u
 			}
 		})
 }
+//#[cfg(any(all(feature = "petgraph", not(feature = "rayon")), doc))]
 #[cfg_attr(docsrs, doc(cfg(all(feature = "petgraph", not(feature = "rayon")))))]
 #[cfg(all(feature = "petgraph", not(feature = "rayon")))]
 pub fn intersection_graphs<Ix: petgraph::graph::IndexType>(size: usize) -> impl Iterator<Item=(petgraph::graph::UnGraph<(), (), Ix>, ChordDiagram)> {
-	use crate::collections::*;
+	use crate::collections::set::*;
 	ChordDiagram::iterate_deg(size)
 		.map(|diag| (diag.intersection_graph(), diag))
 		.filter({
@@ -290,33 +258,6 @@ mod tests {
 		for n in 0..=7 {
 			assert_eq!(ChordDiagram::iterate_deg(n).count(), ChordDiagram::count_deg(n).unwrap());
 		}
-	}
-	#[test]
-	fn test_binomial() {
-		let n = 10;
-		let vals: Vec<u128> = (0..=n).map(|k| binomial(n, k)).collect();
-		assert_eq!(vals, vec![1, 10, 45, 120, 210, 252, 210, 120, 45, 10, 1]);
-	}
-	#[test]
-	fn test_double_factorial() {
-		assert_eq!(double_factorial(0u128.overflowing_sub(1).0), 1);
-		assert_eq!(double_factorial(0), 1);
-		assert_eq!(double_factorial(1), 1);
-		assert_eq!(double_factorial(16), 10321920);
-		assert_eq!(double_factorial(17), 34459425);
-	}
-	#[test]
-	fn test_euler_phi() {
-		assert_eq!(euler_phi(1), 1);
-		assert_eq!(euler_phi(2), 1);
-		assert_eq!(euler_phi(12843), 8556);
-		assert_eq!(euler_phi(1010102), 505050);
-	}
-	#[test]
-	fn test_divisors() {
-		assert_eq!(divisors(2u128), vec![1, 2]);
-		assert_eq!(divisors(141u128), vec![1, 3, 47, 141]);
-		assert_eq!(divisors(143u128), vec![1, 11, 13, 143]);
 	}
 	#[test]
 	fn test_n_chord_diagrams() {

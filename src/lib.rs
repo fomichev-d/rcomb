@@ -1,5 +1,9 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::manual_is_multiple_of)]
+
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 pub use rayon;
@@ -9,24 +13,28 @@ pub use petgraph;
 
 // modules
 
+mod util;
+pub(crate) use util::*;
+
 pub mod collections {
-	mod util;
-	pub(crate) use util::*;
-
-	mod comb_map;
-	pub use comb_map::*;
-
-	mod comb_set;
-	pub use comb_set::*;
+	pub mod map;
+	pub mod set;
+	pub mod index;
 }
-pub mod objects {
-	#[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
+
+mod objects {
 	#[cfg(feature = "petgraph")]
 	pub mod graphs;
 	pub mod chord_diagram;
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
+#[cfg(feature = "petgraph")]
+pub use objects::graphs;
+pub use objects::chord_diagram;
+
 pub mod io {
-	pub mod csv;
+	mod csv;
+	pub use csv::*;
 }
 
 // core traits

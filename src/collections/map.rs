@@ -1,7 +1,5 @@
 use crate::*;
-use crate::collections::*;
-use crate::io::csv::*;
-use std::fmt::Debug;
+use crate::io::*;
 
 #[cfg(feature = "rayon")]
 use rayon::iter::{
@@ -15,38 +13,8 @@ use rayon::iter::{
 	ParallelExtend
 };
 
+use std::{borrow::Borrow, fmt::Debug};
 use std::collections::HashMap;
-
-// stats 
-
-pub trait HasStats<G: CombEq> {
-	type Stats: CombStats<G>;
-	fn stats(&self) -> &Self::Stats;
-}
-
-pub trait CombStats<T>: Clone + Default + Sync {
-	fn on_insert(&mut self, item: &T);
-	fn clear(&mut self);
-}
-impl<T> CombStats<T> for () {
-	fn on_insert(&mut self, _: &T) {}
-	fn clear(&mut self) {}
-}
-
-#[derive(Clone, Copy, Default, Debug)]
-pub struct MaxDegree<T: Copy + Eq + Ord + Send + Sync + Default = usize> {
-	pub max_deg: T
-}
-impl<T: Copy + Eq + Ord + Ord + Send + Sync + Default, G: CombGrad<T>> CombStats<G> for MaxDegree<T> {
-	#[inline]
-	fn on_insert(&mut self, item: &G) {
-		self.max_deg = std::cmp::max(self.max_deg, item.degree());
-	}
-	#[inline]
-	fn clear(&mut self) {
-		self.max_deg = Default::default();
-	}
-}
 
 // TODO: map isomorphism
 
@@ -56,37 +24,25 @@ impl<T: Copy + Eq + Ord + Ord + Send + Sync + Default, G: CombGrad<T>> CombStats
 /// The hash [must be invariant under isomorphism](CombEq).
 ///
 /// If key equality can be quickly computed, use [`HashMap`](std::collections::HashMap) instead.
-/// This includes [CombCan] objects.
+/// This includes [`CombCan`] objects.
 ///
 /// The map will normally contain at most one entry for each key isomorphism class.
 /// For performance reasons, it is possible to temporarily violate this property by using [`insert_unchecked`](Self::insert_unchecked) or [`extend_unchecked`](Self::extend_unchecked).
 /// Use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup) after these methods to restore the guarantees unless it is known they indeed were not violated.
-pub struct CombMap<G: CombEq, T, S: CombStats<G> = ()> {
-	buckets: HashMap<Vec<usize>, Vec<(G, T)>>,
-	stats: S
+#[derive(Clone)]
+pub struct CombMap<G: CombEq, T> {
+	buckets: HashMap<Vec<usize>, Vec<(G, T)>>
 }
-impl<G: CombEq, T, S: CombStats<G>> Default for CombMap<G, T, S> {
+impl<G: CombEq, T> Default for CombMap<G, T> {
 	#[inline]
-	fn default() -> Self { Self { buckets: HashMap::new(), stats: S::default() } }
+	fn default() -> Self { Self { buckets: HashMap::new() } }
 }
-impl<G: CombEq + Debug, T: Debug, S: CombStats<G>> Debug for CombMap<G, T, S> {
+impl<G: CombEq + Debug, T: Debug> Debug for CombMap<G, T> {
 	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
 		f.debug_map().entries(self.iter()).finish()
 	}
 }
-impl<G: CombEq, T, S: CombStats<G>> HasStats<G> for CombMap<G, T, S> {
-	type Stats = S;
-	fn stats(&self) -> &Self::Stats { &self.stats }
-}
-impl<G: CombEq + Clone, T: Clone, S: CombStats<G>> Clone for CombMap<G, T, S> {
-	fn clone(&self) -> Self {
-		Self {
-			buckets: self.buckets.clone(),
-			stats: self.stats.clone()
-		}
-	}
-}
-impl<G: CombEq + Clone, T, S: CombStats<G>> CombMap<G, T, S> {
+impl<G: CombEq + Clone, T> CombMap<G, T> {
 	pub fn clone_with<F: Fn(&T) -> T>(&self, clone: F) -> Self {
 		Self {
 			buckets: self.buckets.iter()
@@ -96,19 +52,18 @@ impl<G: CombEq + Clone, T, S: CombStats<G>> CombMap<G, T, S> {
 						.map(|(g, val)| (g.clone(), clone(val)))
 						.collect()
 				))
-				.collect(),
-			stats: self.stats.clone()
+				.collect()
 		}
 	}
 }
-impl<G: CombEq, T, S: CombStats<G>> FromIterator<(G, T)> for CombMap<G, T, S> {
+impl<G: CombEq, T> FromIterator<(G, T)> for CombMap<G, T> {
 	fn from_iter<I: IntoIterator<Item = (G, T)>>(it: I) -> Self {
 		let mut map = Self::new();
 		map.extend(it);
 		map
 	}
 }
-impl<G: CombEq, T, S: CombStats<G>> Extend<(G, T)> for CombMap<G, T, S> {
+impl<G: CombEq, T> Extend<(G, T)> for CombMap<G, T> {
 	#[inline]
 	fn extend<I>(&mut self, it: I) where I: IntoIterator<Item=(G, T)> {
 		for (g, val) in it {
@@ -116,30 +71,30 @@ impl<G: CombEq, T, S: CombStats<G>> Extend<(G, T)> for CombMap<G, T, S> {
 		}
 	}
 }
-impl<G: CombEq, T, S: CombStats<G>> IntoIterator for CombMap<G, T, S> {
+impl<G: CombEq, T> IntoIterator for CombMap<G, T> {
 	type IntoIter = std::iter::Flatten<std::collections::hash_map::IntoValues<Vec<usize>, Vec<(G, T)>>>;
 	type Item = (G, T);
 	fn into_iter(self) -> Self::IntoIter {
 		self.buckets.into_values().flatten()
 	}
 }
-impl<'a, G: CombEq, T, S: CombStats<G>> IntoIterator for &'a CombMap<G, T, S> {
+impl<'a, G: CombEq, T> IntoIterator for &'a CombMap<G, T> {
 	type IntoIter = std::iter::Map<std::iter::Flatten<std::collections::hash_map::Values<'a, Vec<usize>, Vec<(G, T)>>>, fn(&'a (G, T)) -> (&'a G, &'a T)>;
 	type Item = (&'a G, &'a T);
 	fn into_iter(self) -> Self::IntoIter {
-		self.buckets.values().flatten().map(move_refs as fn(&'a (G, T)) -> (&'a G, &'a T))
+		self.buckets.values().flatten().map(|(g, val)| (g, val))
 	}
 }
-impl<'a, G: CombEq, T, S: CombStats<G>> IntoIterator for &'a mut CombMap<G, T, S> {
+impl<'a, G: CombEq, T> IntoIterator for &'a mut CombMap<G, T> {
 	type IntoIter = std::iter::Map<std::iter::Flatten<std::collections::hash_map::ValuesMut<'a, Vec<usize>, Vec<(G, T)>>>, fn(&'a mut (G, T)) -> (&'a G, &'a mut T)>;
 	type Item = (&'a G, &'a mut T);
 	fn into_iter(self) -> Self::IntoIter {
-		self.buckets.values_mut().flatten().map(move_refs_mut2 as fn(&'a mut (G, T)) -> (&'a G, &'a mut T))
+		self.buckets.values_mut().flatten().map(|(g, val)| (g, val))
 	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
-impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> FromParallelIterator<(G, T)> for CombMap<G, T, S> {
+impl<G: CombEq + Send + Sync, T: Send + Sync> FromParallelIterator<(G, T)> for CombMap<G, T> {
 	fn from_par_iter<I: IntoParallelIterator<Item=(G, T)>>(par_iter: I) -> Self {
 		let mut buckets = par_iter.into_par_iter()
 			.map(|(g, val)| (g.hash(), g, val))
@@ -164,16 +119,12 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> FromParallelItera
 			.for_each(|bucket| {
 				par_dedup(bucket, |(g1, _), (g2, _)| g1.is_isomorphic(g2))
 			});
-		let mut stats = S::default();
-		buckets.values()
-			.flat_map(|bucket| bucket)
-			.for_each(|(g, _)| { stats.on_insert(g); });
-		Self { buckets, stats }
+		Self { buckets }
 	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
-impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> ParallelExtend<(G, T)> for CombMap<G, T, S> {
+impl<G: CombEq + Send + Sync, T: Send + Sync> ParallelExtend<(G, T)> for CombMap<G, T> {
 	fn par_extend<I: IntoParallelIterator<Item=(G, T)>>(&mut self, par_iter: I) {
 		let buckets = par_iter.into_par_iter()
 			.map(|(g, val)| (g.hash(), g, val))
@@ -193,9 +144,6 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> ParallelExtend<(G
 					map1
 				}
 			);
-		buckets.values()
-			.flat_map(|bucket| bucket)
-			.for_each(|(g, _)| { self.stats.on_insert(g); });
 		for (key, mut bucket) in buckets {
 			self.buckets.entry(key).or_default().append(&mut bucket);
 		}
@@ -208,67 +156,69 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> ParallelExtend<(G
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
-impl<G: CombEq + Send, T: Send, S: CombStats<G>> IntoParallelIterator for CombMap<G, T, S> {
+impl<G: CombEq + Send, T: Send> IntoParallelIterator for CombMap<G, T> {
 	type Iter = rayon::iter::FlatMap<rayon::collections::hash_map::IntoIter<Vec<usize>, Vec<(G, T)>>, fn((Vec<usize>, Vec<(G, T)>)) -> Vec<(G, T)>>;
 	type Item = (G, T);
 	fn into_par_iter(self) -> Self::Iter {
-		self.buckets.into_par_iter().flat_map(entry_value as fn((Vec<usize>, Vec<(G, T)>)) -> Vec<(G, T)>)
+		self.buckets.into_par_iter().flat_map(|(_, bucket)| bucket)
 	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
-impl<'a, G: CombEq + Sync, T: Sync, S: CombStats<G>> IntoParallelIterator for &'a CombMap<G, T, S> {
+impl<'a, G: CombEq + Sync, T: Sync> IntoParallelIterator for &'a CombMap<G, T> {
 	type Iter = rayon::iter::Map<rayon::iter::FlatMap<rayon::collections::hash_map::Iter<'a, Vec<usize>, Vec<(G, T)>>, fn((&'a Vec<usize>, &'a Vec<(G, T)>)) -> &'a Vec<(G, T)>>, fn(&'a (G, T)) -> (&'a G, &'a T)>;
 	type Item = (&'a G, &'a T);
 	fn into_par_iter(self) -> Self::Iter {
 		self.buckets.par_iter()
 			.flat_map(entry_value as fn((&'a Vec<usize>, &'a Vec<(G, T)>)) -> &'a Vec<(G, T)>)
-			.map(move_refs as fn(&'a (G, T)) -> (&'a G, &'a T))
+			.map(|(g, val)| (g, val))
 	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
-impl<'a, G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> IntoParallelIterator for &'a mut CombMap<G, T, S> {
+impl<'a, G: CombEq + Send + Sync, T: Send + Sync> IntoParallelIterator for &'a mut CombMap<G, T> {
 	type Iter = rayon::iter::Map<rayon::iter::FlatMap<rayon::collections::hash_map::IterMut<'a, Vec<usize>, Vec<(G, T)>>, fn((&'a Vec<usize>, &'a mut Vec<(G, T)>)) -> &'a mut Vec<(G, T)>>, fn(&'a mut (G, T)) -> (&'a G, &'a mut T)>;
 	type Item = (&'a G, &'a mut T);
 	fn into_par_iter(self) -> Self::Iter {
 		self.buckets.par_iter_mut()
 			.flat_map(entry_value as fn((&'a Vec<usize>, &'a mut Vec<(G, T)>)) -> &'a mut Vec<(G, T)>)
-			.map(move_refs_mut2 as fn(&'a mut (G, T)) -> (&'a G, &'a mut T))
+			.map(|(g, val)| (g, val))
 	}
 }
 // we have two options (get() and par_get()) and no specialisation
 /*
-impl<G: CombEq, T, S: CombStats<G>> std::ops::Index<&G> for CombMap<G, T, S> {
+impl<G: CombEq, T> std::ops::Index<&G> for CombMap<G, T> {
 	type Output = T;
 	#[inline]
 	fn index(&self, key: &G) -> &Self::Output {
 		self.get(key).expect("no entry found for key")
 	}
 }
-impl<G: CombEq, T, S: CombStats<G>> std::ops::IndexMut<&G> for CombMap<G, T, S> {
+impl<G: CombEq, T> std::ops::IndexMut<&G> for CombMap<G, T> {
 	#[inline]
 	fn index_mut(&mut self, key: &G) -> &mut Self::Output {
 		self.get_mut(key).expect("no entry found for key")
 	}
 }
 */
-impl<G: CombEq, T, S: CombStats<G>> CombMap<G, T, S> {
+impl<G: CombEq, T> CombMap<G, T> {
 	/// Creates an empty map.
 	pub fn new() -> Self { Self::default() }
 	/// Clears the map, removing all key-value pairs.
 	pub fn clear(&mut self) {
 		self.buckets.clear();
-		self.stats.clear();
 	}
 	/// Returns the number of elements in the map.
 	///
 	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](Self::insert_unchecked)), they will be counted separately.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	pub fn len(&self) -> usize {
-		self.buckets.iter()
-			.map(|(_, v)| v.len())
+		self.buckets.values()
+			.map(|bucket| bucket.len())
 			.sum()
+	}
+	pub fn is_empty(&self) -> bool {
+		self.buckets.is_empty()
 	}
 	/// Inserts a key-value pair into the map.
 	///
@@ -282,16 +232,12 @@ impl<G: CombEq, T, S: CombStats<G>> CombMap<G, T, S> {
 	#[inline]
 	pub fn insert(&mut self, g: G, val: T) -> Option<T> {
 		let key = g.hash();
-		if self.buckets.get(&key).is_none() {
-			self.buckets.insert(key.clone(), vec![]);
-		}
-		let bucket = self.buckets.get_mut(&key).unwrap();
+		let bucket = self.buckets.entry(key).or_default();
 		match bucket.iter().position(|(g_other, _)| g.is_isomorphic(g_other)) {
 			Some(i) => {
 				Some(std::mem::replace(&mut bucket[i].1, val))
 			}
 			None => {
-				self.stats.on_insert(&g);
 				bucket.push((g, val));
 				None
 			}
@@ -304,11 +250,7 @@ impl<G: CombEq, T, S: CombStats<G>> CombMap<G, T, S> {
 	#[inline]
 	pub fn insert_unchecked(&mut self, g: G, val: T) {
 		let key = g.hash();
-		if self.buckets.get(&key).is_none() {
-			self.buckets.insert(key.clone(), vec![]);
-		}
-		let bucket = self.buckets.get_mut(&key).unwrap();
-		self.stats.on_insert(&g);
+		let bucket = self.buckets.entry(key).or_default();
 		bucket.push((g, val));
 	}
 	/// Removes a key from the map, returning the value at the key if an isomorphic key was previously in the map.
@@ -316,13 +258,14 @@ impl<G: CombEq, T, S: CombStats<G>> CombMap<G, T, S> {
 	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](Self::insert_unchecked)), an arbitrary one is picked.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn remove(&mut self, g: &G) -> Option<T> {
+	pub fn remove<Q: Borrow<G>>(&mut self, g: &Q) -> Option<T> {
+		let g = g.borrow();
 		let key = g.hash();
 		match self.buckets.get_mut(&key) {
 			Some(bucket) => {
 				if let Some(i) = bucket.iter().position(|(g_other, _)| g_other.is_isomorphic(g)) {
 					let (_, val) = bucket.swap_remove(i);
-					if bucket.len() == 0 {
+					if bucket.is_empty() {
 						self.buckets.remove(&key);
 					}
 					Some(val)
@@ -352,7 +295,7 @@ impl<G: CombEq, T, S: CombStats<G>> CombMap<G, T, S> {
 		self.buckets.iter_mut().for_each(|(_, bucket)| {
 			bucket.retain_mut(|(g, v)| f(g, v));
 		});
-		self.buckets.retain(|_, v| { v.len() > 0 });
+		self.buckets.retain(|_, bucket| { !bucket.is_empty() });
 	}
 	/// Remove entries with duplicate keys (up to isomorphism).
 	/// The choice of the remaining key is arbitrary.
@@ -372,7 +315,8 @@ impl<G: CombEq, T, S: CombStats<G>> CombMap<G, T, S> {
 	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](Self::insert_unchecked)), an arbitrary one is picked.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn get(&self, g: &G) -> Option<&T> {
+	pub fn get<Q: Borrow<G>>(&self, g: &Q) -> Option<&T> {
+		let g = g.borrow();
 		let key = g.hash();
 		match self.buckets.get(&key) {
 			Some(bucket) => {
@@ -391,7 +335,8 @@ impl<G: CombEq, T, S: CombStats<G>> CombMap<G, T, S> {
 	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](Self::insert_unchecked)), an arbitrary one is picked.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn get_mut(&mut self, g: &G) -> Option<&mut T> {
+	pub fn get_mut<Q: Borrow<G>>(&mut self, g: &Q) -> Option<&mut T> {
+		let g = g.borrow();
 		let key = g.hash();
 		match self.buckets.get_mut(&key) {
 			Some(bucket) => {
@@ -407,7 +352,7 @@ impl<G: CombEq, T, S: CombStats<G>> CombMap<G, T, S> {
 	}
 	/// Returns `true` if the map contains a value for the specified key.
 	#[inline]
-	pub fn contains_key(&self, g: &G) -> bool {
+	pub fn contains_key<Q: Borrow<G>>(&self, g: &Q) -> bool {
 		self.get(g).is_some()
 	}
 	/// An iterator visiting all key-value pairs in arbitrary order.
@@ -427,57 +372,52 @@ impl<G: CombEq, T, S: CombStats<G>> CombMap<G, T, S> {
 	/// The iterator element type is `G`.
 	#[inline]
 	pub fn into_keys(self) -> std::iter::Map<<Self as IntoIterator>::IntoIter, fn((G, T)) -> G> {
-		self.into_iter().map(entry_key as fn((G, T)) -> G)
+		self.into_iter().map(|(g, _)| g)
 	}
 	/// An iterator visiting all keys in arbitrary order.
 	/// The iterator element type is `&'a G`.
 	#[inline]
 	pub fn keys<'a>(&'a self) -> std::iter::Map<<&'a Self as IntoIterator>::IntoIter, fn((&'a G, &'a T)) -> &'a G> {
-		self.into_iter().map(entry_key as fn((&'a G, &'a T)) -> &'a G)
+		self.into_iter().map(|(g, _)| g)
 	}
 	/// Creates a consuming iterator visiting all values in arbitrary order.
 	/// The map cannot be used after calling this.
 	/// The iterator element type is `T`.
 	#[inline]
 	pub fn into_values(self) -> std::iter::Map<<Self as IntoIterator>::IntoIter, fn((G, T)) -> T> {
-		self.into_iter().map(entry_value as fn((G, T)) -> T)
+		self.into_iter().map(|(_, val)| val)
 	}
 	/// An iterator visiting all values in arbitrary order.
 	/// The iterator element type is `&'a T`.
 	#[inline]
 	pub fn values<'a>(&'a self) -> std::iter::Map<<&'a Self as IntoIterator>::IntoIter, fn((&'a G, &'a T)) -> &'a T> {
-		self.into_iter().map(entry_value as fn((&'a G, &'a T)) -> &'a T)
+		self.into_iter().map(|(_, val)| val)
 	}
 	/// An iterator visiting all values mutably in arbitrary order.
 	/// The iterator element type is `&'a mut T`.
 	#[inline]
 	pub fn values_mut<'a>(&'a mut self) -> std::iter::Map<<&'a mut Self as IntoIterator>::IntoIter, fn((&'a G, &'a mut T)) -> &'a mut T> {
-		self.into_iter().map(entry_value as fn((&'a G, &'a mut T)) -> &'a mut T)
+		self.into_iter().map(|(_, val)| val)
 	}
 
 	pub fn efficiency(&self) -> f64 {
 		let l = self.len();
 		if l == 0 { return 1.; }
-		return l as f64 / self.buckets.len() as f64;
+		l as f64 / self.buckets.len() as f64
 	}
-	pub fn apply<T2, F: Fn(T) -> T2>(self, f: F) -> CombMap<G, T2, S> {
+	pub fn apply<T2, F: Fn(T) -> T2>(self, f: F) -> CombMap<G, T2> {
 		let buckets = self.buckets.into_iter().map(|(key, bucket)| (
 			key.clone(),
 			bucket.into_iter().map(|(g, val)| (g, f(val))).collect()
 		)).collect();
-		CombMap { buckets, stats: self.stats.clone() }
+		CombMap { buckets }
 	}
-	pub fn apply_ref<T2, F: Fn(&T) -> T2>(&self, f: F) -> CombMap<G, T2, S> where G: Clone {
+	pub fn apply_ref<T2, F: Fn(&T) -> T2>(&self, f: F) -> CombMap<G, T2> where G: Clone {
 		let buckets = self.buckets.iter().map(|(key, bucket)| (
 			key.clone(),
-			bucket.into_iter().map(|(g, val)| (g.clone(), f(val))).collect()
+			bucket.iter().map(|(g, val)| (g.clone(), f(val))).collect()
 		)).collect();
-		CombMap { buckets, stats: self.stats.clone() }
-	}
-	pub fn with_stats<S2: CombStats<G>>(self) -> CombMap<G, T, S2> where G: Sync, T: Sync {
-		let mut stats = S2::default();
-		self.keys().for_each(|g| stats.on_insert(g));
-		CombMap { buckets: self.buckets, stats }
+		CombMap { buckets }
 	}
 
 	pub fn read_csv(config: CsvConfig<G, T>) -> std::io::Result<Self> where G: CombCsv {
@@ -534,7 +474,7 @@ impl<G: CombEq, T, S: CombStats<G>> CombMap<G, T, S> {
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
-impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> CombMap<G, T, S> {
+impl<G: CombEq + Send + Sync, T: Send + Sync> CombMap<G, T> {
 	#[inline]
 	pub fn par_insert(&mut self, g: G, val: T) -> Option<T> {
 		let key = g.hash();
@@ -547,20 +487,20 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> CombMap<G, T, S> 
 				Some(std::mem::replace(&mut bucket[i].1, val))
 			}
 			None => {
-				self.stats.on_insert(&g);
 				bucket.push((g, val));
 				None
 			}
 		}
 	}
 	#[inline]
-	pub fn par_remove(&mut self, g: &G) -> Option<T> {
+	pub fn par_remove<Q: Borrow<G>>(&mut self, g: &Q) -> Option<T> {
+		let g = g.borrow();
 		let key = g.hash();
 		match self.buckets.get_mut(&key) {
 			Some(bucket) => {
 				if let Some(i) = bucket.par_iter().position_any(|(g_other, _)| g_other.is_isomorphic(g)) {
 					let (_, val) = bucket.swap_remove(i);
-					if bucket.len() == 0 {
+					if bucket.is_empty() {
 						self.buckets.remove(&key);
 					}
 					Some(val)
@@ -590,9 +530,6 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> CombMap<G, T, S> 
 					map1
 				}
 			);
-		buckets.values()
-			.flat_map(|bucket| bucket)
-			.for_each(|(g, _)| { self.stats.on_insert(g); });
 		for (hash, mut bucket) in buckets {
 			self.buckets.entry(hash).or_default().append(&mut bucket);
 		}
@@ -609,7 +546,8 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> CombMap<G, T, S> 
 		});
 	}
 	#[inline]
-	pub fn par_get(&self, g: &G) -> Option<&T> {
+	pub fn par_get<Q: Borrow<G>>(&self, g: &Q) -> Option<&T> {
+		let g = g.borrow();
 		let key = g.hash();
 		match self.buckets.get(&key) {
 			Some(bucket) => {
@@ -621,7 +559,8 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> CombMap<G, T, S> 
 		}
 	}
 	#[inline]
-	pub fn par_get_mut(&mut self, g: &G) -> Option<&mut T> {
+	pub fn par_get_mut<Q: Borrow<G>>(&mut self, g: &Q) -> Option<&mut T> {
+		let g = g.borrow();
 		let key = g.hash();
 		match self.buckets.get_mut(&key) {
 			Some(bucket) => {
@@ -633,31 +572,31 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> CombMap<G, T, S> 
 		}
 	}
 	#[inline]
-	pub fn par_contains_key(&self, g: &G) -> bool {
+	pub fn par_contains_key<Q: Borrow<G>>(&self, g: &Q) -> bool {
 		self.par_get(g).is_some()
 	}
 	#[inline]
 	pub fn into_par_keys(self) -> rayon::iter::Map<<Self as IntoParallelIterator>::Iter, fn((G, T)) -> G> {
-		self.into_par_iter().map(entry_key as fn((G, T)) -> G)
+		self.into_par_iter().map(|(g, _)| g)
 	}
 	#[inline]
 	pub fn par_keys<'a>(&'a self) -> rayon::iter::Map<<&'a Self as IntoParallelIterator>::Iter, fn((&'a G, &'a T)) -> &'a G> {
-		self.par_iter().map(entry_key as fn((&'a G, &'a T)) -> &'a G)
+		self.par_iter().map(|(g, _)| g)
 	}
 	#[inline]
 	pub fn into_par_values(self) -> rayon::iter::Map<<Self as IntoParallelIterator>::Iter, fn((G, T)) -> T> {
-		self.into_par_iter().map(entry_value as fn((G, T)) -> T)
+		self.into_par_iter().map(|(_, val)| val)
 	}
 	#[inline]
 	pub fn par_values<'a>(&'a self) -> rayon::iter::Map<<&'a Self as IntoParallelIterator>::Iter, fn((&'a G, &'a T)) -> &'a T> {
-		self.par_iter().map(entry_value as fn((&'a G, &'a T)) -> &'a T)
+		self.par_iter().map(|(_, val)| val)
 	}
 	#[inline]
 	pub fn par_values_mut<'a>(&'a mut self) -> rayon::iter::Map<<&'a mut Self as IntoParallelIterator>::Iter, fn((&'a G, &'a mut T)) -> &'a mut T> {
-		self.par_iter_mut().map(entry_value as fn((&'a G, &'a mut T)) -> &'a mut T)
+		self.par_iter_mut().map(|(_, val)| val)
 	}
 
-	pub fn par_apply<T2: Send, F: Fn(T) -> T2 + Sync>(self, f: F) -> CombMap<G, T2, S> {
+	pub fn par_apply<T2: Send, F: Fn(T) -> T2 + Sync>(self, f: F) -> CombMap<G, T2> {
 		let buckets = self.buckets.into_par_iter()
 			.map(|(key, bucket)| (
 				key.clone(),
@@ -666,9 +605,9 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> CombMap<G, T, S> 
 					.collect()
 			))
 			.collect();
-		CombMap { buckets, stats: self.stats.clone() }
+		CombMap { buckets }
 	}
-	pub fn par_apply_ref<T2: Send, F: Fn(&T) -> T2 + Sync>(&self, f: F) -> CombMap<G, T2, S> where G: Clone {
+	pub fn par_apply_ref<T2: Send, F: Fn(&T) -> T2 + Sync>(&self, f: F) -> CombMap<G, T2> where G: Clone {
 		let buckets = self.buckets.par_iter()
 			.map(|(key, bucket)| (
 				key.clone(),
@@ -677,7 +616,7 @@ impl<G: CombEq + Send + Sync, T: Send + Sync, S: CombStats<G>> CombMap<G, T, S> 
 					.collect()
 			))
 			.collect();
-		CombMap { buckets, stats: self.stats.clone() }
+		CombMap { buckets }
 	}
 
 	pub fn par_read_csv(config: CsvConfig<G, T>) -> std::io::Result<Self> where G: CombCsv {

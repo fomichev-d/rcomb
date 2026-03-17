@@ -1,6 +1,6 @@
 use crate::*;
-use crate::collections::*;
-use crate::io::csv::*;
+use crate::collections::map::*;
+use crate::io::*;
 
 #[cfg(feature = "rayon")]
 use rayon::iter::{
@@ -9,6 +9,8 @@ use rayon::iter::{
 	FromParallelIterator,
 	ParallelExtend
 };
+
+use std::borrow::Borrow;
 
 /// A set structure where item equality is considered up to isomorphism.
 ///
@@ -22,97 +24,92 @@ use rayon::iter::{
 /// For performance reasons, it is possible to temporarily violate this property by using [`insert_unchecked`](Self::insert_unchecked) or [`extend_unchecked`](Self::extend_unchecked).
 /// Use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup) after these methods to restore the guarantees unless it is known they indeed were not violated.
 #[derive(Debug)]
-pub struct CombSet<G: CombEq, S: CombStats<G> = ()>(CombMap<G, (), S>);
+pub struct CombSet<G: CombEq>(CombMap<G, ()>);
 
-impl<G: CombEq, S: CombStats<G>> Default for CombSet<G, S> {
+impl<G: CombEq> Default for CombSet<G> {
 	fn default() -> Self { Self(Default::default()) }
 }
-impl<G: CombEq, S: CombStats<G>> HasStats<G> for CombSet<G, S> {
-	type Stats = S;
-	#[inline]
-	fn stats(&self) -> &Self::Stats { self.0.stats() }
-}
-impl<G: CombEq + Clone, S: CombStats<G>> Clone for CombSet<G, S> {
+impl<G: CombEq + Clone> Clone for CombSet<G> {
 	fn clone(&self) -> Self {
 		Self(self.0.clone())
 	}
 }
-impl<G: CombEq, S: CombStats<G>> FromIterator<G> for CombSet<G, S> {
+impl<G: CombEq> FromIterator<G> for CombSet<G> {
 	fn from_iter<I: IntoIterator<Item=G>>(it: I) -> Self {
 		let mut set = Self::new();
 		set.extend_unchecked(it);
 		set
 	}
 }
-impl<G: CombEq, S: CombStats<G>> IntoIterator for CombSet<G, S> {
-	type IntoIter = std::iter::Map<<CombMap::<G, (), S> as IntoIterator>::IntoIter, fn((G, ())) -> G>;
+impl<G: CombEq> IntoIterator for CombSet<G> {
+	type IntoIter = std::iter::Map<<CombMap::<G, ()> as IntoIterator>::IntoIter, fn((G, ())) -> G>;
 	type Item = G;
 	fn into_iter(self) -> Self::IntoIter {
-		self.0.into_iter().map(entry_key as fn((G, ())) -> G)
+		self.0.into_iter().map(|(g, ())| g)
 	}
 }
-impl<'a, G: CombEq, S: CombStats<G>> IntoIterator for &'a CombSet<G, S> {
-	type IntoIter = std::iter::Map<<&'a CombMap<G, (), S> as IntoIterator>::IntoIter, fn((&'a G, &'a ())) -> &'a G>;
+impl<'a, G: CombEq> IntoIterator for &'a CombSet<G> {
+	type IntoIter = std::iter::Map<<&'a CombMap<G, ()> as IntoIterator>::IntoIter, fn((&'a G, &'a ())) -> &'a G>;
 	type Item = &'a G;
 	fn into_iter(self) -> Self::IntoIter {
-		(&self.0).into_iter().map(entry_key as fn((&'a G, &'a ())) -> &'a G)
+		(&self.0).into_iter().map(|(g, &())| g)
 	}
 }
-impl<'a, G: CombEq, S: CombStats<G>> IntoIterator for &'a mut CombSet<G, S> {
-	type IntoIter = std::iter::Map<<&'a mut CombMap<G, (), S> as IntoIterator>::IntoIter, fn((&'a G, &'a mut ())) -> &'a G>;
+impl<'a, G: CombEq> IntoIterator for &'a mut CombSet<G> {
+	type IntoIter = std::iter::Map<<&'a mut CombMap<G, ()> as IntoIterator>::IntoIter, fn((&'a G, &'a mut ())) -> &'a G>;
 	type Item = &'a G;
 	fn into_iter(self) -> Self::IntoIter {
-		(&mut self.0).into_iter().map(entry_key as fn((&'a G, &'a mut ())) -> &'a G)
+		(&mut self.0).into_iter().map(|(g, &mut ())| g)
 	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
-impl<G: CombEq + Send + Sync, S: CombStats<G>> FromParallelIterator<G> for CombSet<G, S> {
+impl<G: CombEq + Send + Sync> FromParallelIterator<G> for CombSet<G> {
 	fn from_par_iter<I: IntoParallelIterator<Item=G>>(par_iter: I) -> Self {
-		Self(CombMap::<G, (), S>::from_par_iter(par_iter.into_par_iter().map(|g| (g, ()))))
+		Self(CombMap::<G, ()>::from_par_iter(par_iter.into_par_iter().map(|g| (g, ()))))
 	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
-impl<G: CombEq + Send + Sync, S: CombStats<G>> ParallelExtend<G> for CombSet<G, S> {
+impl<G: CombEq + Send + Sync> ParallelExtend<G> for CombSet<G> {
 	fn par_extend<I: IntoParallelIterator<Item=G>>(&mut self, par_iter: I) {
 		self.0.par_extend(par_iter.into_par_iter().map(|g| (g, ())))
 	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
-impl<G: CombEq + Send, S: CombStats<G>> IntoParallelIterator for CombSet<G, S> {
-	type Iter = rayon::iter::Map<<CombMap::<G, (), S> as IntoParallelIterator>::Iter, fn((G, ())) -> G>;
+impl<G: CombEq + Send> IntoParallelIterator for CombSet<G> {
+	type Iter = rayon::iter::Map<<CombMap::<G, ()> as IntoParallelIterator>::Iter, fn((G, ())) -> G>;
 	type Item = G;
 	fn into_par_iter(self) -> Self::Iter {
-		self.0.into_par_iter().map(entry_key as fn((G, ())) -> G)
+		self.0.into_par_iter().map(|(g, ())| g)
 	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
-impl<'a, G: CombEq + Sync, S: CombStats<G>> IntoParallelIterator for &'a CombSet<G, S> {
-	type Iter = rayon::iter::Map<<&'a CombMap<G, (), S> as IntoParallelIterator>::Iter, fn((&'a G, &'a ())) -> &'a G>;
+impl<'a, G: CombEq + Sync> IntoParallelIterator for &'a CombSet<G> {
+	type Iter = rayon::iter::Map<<&'a CombMap<G, ()> as IntoParallelIterator>::Iter, fn((&'a G, &'a ())) -> &'a G>;
 	type Item = &'a G;
 	fn into_par_iter(self) -> Self::Iter {
-		(&self.0).into_par_iter().map(entry_key as fn((&'a G, &'a ())) -> &'a G)
+		(&self.0).into_par_iter().map(|(g, &())| g)
 	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
-impl<'a, G: CombEq + Send + Sync, S: CombStats<G>> IntoParallelIterator for &'a mut CombSet<G, S> {
-	type Iter = rayon::iter::Map<<&'a mut CombMap<G, (), S> as IntoParallelIterator>::Iter, fn((&'a G, &'a mut ())) -> &'a G>;
+impl<'a, G: CombEq + Send + Sync> IntoParallelIterator for &'a mut CombSet<G> {
+	type Iter = rayon::iter::Map<<&'a mut CombMap<G, ()> as IntoParallelIterator>::Iter, fn((&'a G, &'a mut ())) -> &'a G>;
 	type Item = &'a G;
 	fn into_par_iter(self) -> Self::Iter {
-		(&mut self.0).into_par_iter().map(entry_key as fn((&'a G, &'a mut ())) -> &'a G)
+		(&mut self.0).into_par_iter().map(|(g, &mut ())| g)
 	}
 }
-impl<G: CombEq, S: CombStats<G>> Extend<G> for CombSet<G, S> {
+impl<G: CombEq> Extend<G> for CombSet<G> {
 	#[inline]
 	fn extend<I>(&mut self, it: I) where I: IntoIterator<Item=G> {
 		self.0.extend(it.into_iter().map(|g| (g, ())))
 	}
 }
-impl<G: CombEq, S: CombStats<G>> CombSet<G, S> {
+impl<G: CombEq> CombSet<G> {
 	/// Creates an empty set.
 	pub fn new() -> Self { Self::default() }
 	/// Clears the set, removing all entries.
@@ -124,6 +121,8 @@ impl<G: CombEq, S: CombStats<G>> CombSet<G, S> {
 	/// To restore item uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
 	pub fn len(&self) -> usize { self.0.len() }
+	#[inline]
+	pub fn is_empty(&self) -> bool { self.0.is_empty() }
 	/// Inserts an item into the set.
 	///
 	/// If the set did have an isomorphic item present, it will not be replaced; this matters for items that can be isomorphic without being identical.
@@ -143,7 +142,7 @@ impl<G: CombEq, S: CombStats<G>> CombSet<G, S> {
 	/// If there are several isomorphic items (e.g. after [`insert_unchecked`](Self::insert_unchecked)), an arbitrary one is picked.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn remove(&mut self, g: &G) { self.0.remove(g); }
+	pub fn remove<Q: Borrow<G>>(&mut self, g: &Q) { self.0.remove(g); }
 	/// Extends the set with the contents of the iterator, assuming the items are not isomorphic to each other or any present ones.
 	///
 	/// If the set or the iterator did have isomorphic items, it will now store several isomorphic items.
@@ -162,7 +161,7 @@ impl<G: CombEq, S: CombStats<G>> CombSet<G, S> {
 	pub fn dedup(&mut self) { self.0.dedup() }
 	/// Returns `true` if the set contains an isomorphic item.
 	#[inline]
-	pub fn contains(&self, g: &G) -> bool { self.0.contains_key(g) }
+	pub fn contains<Q: Borrow<G>>(&self, g: &Q) -> bool { self.0.contains_key(g) }
 	/// An iterator visiting all items in arbitrary order.
 	/// The iterator element type is `&'a G`.
 	#[inline]
@@ -179,13 +178,13 @@ impl<G: CombEq, S: CombStats<G>> CombSet<G, S> {
 	}
 }
 #[cfg(feature = "rayon")]
-impl<G: CombEq + Send + Sync, S: CombStats<G>> CombSet<G, S> {
+impl<G: CombEq + Send + Sync> CombSet<G> {
 	#[inline]
 	pub fn par_insert(&mut self, g: G) {
 		self.0.par_insert(g, ());
 	}
 	#[inline]
-	pub fn par_remove(&mut self, g: &G) {
+	pub fn par_remove<Q: Borrow<G>>(&mut self, g: &Q) {
 		self.0.par_remove(g);
 	}
 	#[inline]
@@ -195,11 +194,9 @@ impl<G: CombEq + Send + Sync, S: CombStats<G>> CombSet<G, S> {
 	#[inline]
 	pub fn par_retain<F: Fn(&G) -> bool + Copy + Sync>(&mut self, f: F) { self.0.par_retain(|g, ()| f(g)) }
 	#[inline]
-	pub fn par_contains(&self, g: &G) -> bool { self.0.par_contains_key(g) }
+	pub fn par_contains<Q: Borrow<G>>(&self, g: &Q) -> bool { self.0.par_contains_key(g) }
 	#[inline]
 	pub fn par_dedup(&mut self) { self.0.par_dedup() }
-	#[inline]
-	pub fn par_contains_key(&self, g: &G) -> bool { self.0.par_contains_key(g) }
 	#[inline]
 	pub fn par_read_csv(config: CsvConfig<G, ()>) -> std::io::Result<Self> where G: CombCsv {
 		Ok(Self(CombMap::par_read_csv(config)?))

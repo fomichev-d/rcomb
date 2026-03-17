@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 pub trait CombCsv: Sized {
 	type Err;
 	const CSV_HEADER: &'static str;
@@ -100,6 +102,12 @@ impl<G: CombCsv, T> CsvConfig<G, T> {
 		self.value_idx = Some(self.columns_pre.len() + 1 + self.columns_mid.len());
 		self
 	}
+	pub fn display_value<S: Into<String>>(mut self, header: S) -> Self where T: Display {
+		self.value_header = Some(header.into());
+		self.value_fmt = Some(Box::new(|val| val.to_string()));
+		self.value_idx = Some(self.columns_pre.len() + 1 + self.columns_mid.len());
+		self
+	}
 	pub fn parse_value<S: Into<String>>(mut self, header: S, parser: Box<dyn Fn(&str) -> T>) -> Self {
 		self.value_header = Some(header.into());
 		self.value_parser = Some(parser);
@@ -129,10 +137,10 @@ impl<G: CombCsv, T> CsvConfig<G, T> {
 	}
 	pub(crate) fn write_entry(&self, g: &G, val: &T) -> Option<Vec<String>> {
 		if let Some(ref filter) = self.key_filter {
-			if !filter(&g) { return None; }
+			if !filter(g) { return None; }
 		}
 		if let Some(ref filter) = self.value_filter {
-			if !filter(&val) { return None; }
+			if !filter(val) { return None; }
 		}
 		let entry: Vec<String> = self.columns_pre.iter().map(|column| (column.fmt)(g, val))
 			.chain(std::iter::once(g.to_csv_string()))

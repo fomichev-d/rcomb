@@ -1,5 +1,5 @@
 use rcomb::*;
-use rcomb::collections::*;
+use rcomb::collections::map::*;
 #[cfg(feature = "rayon")]
 use rcomb::rayon::iter::*;
 

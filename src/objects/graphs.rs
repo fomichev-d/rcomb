@@ -1,5 +1,5 @@
 use crate::*;
-use crate::io::csv::*;
+use crate::io::*;
 
 use petgraph::graph::{UnGraph, IndexType};
 use petgraph::graph6::*;
