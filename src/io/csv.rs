@@ -42,6 +42,7 @@ pub struct CsvConfig<'a, G: CombCsv, T> {
 	pub(crate) use_header: bool,
 	pub(crate) use_tqdm: bool,
 	pub(crate) filename: String,
+	pub(crate) dedup: bool,
 	columns_pre: Vec<CsvColumn<'a, G, T>>,
 	key_idx: usize,
 	key_header: String,
@@ -63,6 +64,7 @@ impl<'a, G: CombCsv, T> CsvConfig<'a, G, T> {
 			use_header: false,
 			use_tqdm: false,
 			filename: filename.into(),
+			dedup: false,
 			columns_pre: vec![],
 			key_idx: 0,
 			key_header: G::CSV_HEADER.into(),
@@ -82,6 +84,10 @@ impl<'a, G: CombCsv, T> CsvConfig<'a, G, T> {
 	}
 	pub fn tqdm(mut self) -> Self {
 		self.use_tqdm = true;
+		self
+	}
+	pub fn dedup(mut self) -> Self {
+		self.dedup = true;
 		self
 	}
 	pub fn key_header<S: Into<String>>(mut self, key_header: S) -> Self {

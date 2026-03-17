@@ -435,10 +435,19 @@ impl<G: CombEq, T> CombMap<G, T> {
 
 		for (g, val) in it.filter_map(|record| config.read_entry(&record)) {
 			if let Some(val) = val {
-				map.insert_unchecked(g, val);
+				if config.dedup {
+					map.insert(g, val);
+				} else {
+					map.insert_unchecked(g, val);
+				}
 			} else {
 				if std::mem::size_of::<T>() == std::mem::size_of::<()>() {
-					map.insert_unchecked(g, unsafe { std::mem::MaybeUninit::<T>::zeroed().assume_init() });
+					let val = unsafe { std::mem::MaybeUninit::<T>::zeroed().assume_init() };
+					if config.dedup {
+						map.insert(g, val);
+					} else {
+						map.insert_unchecked(g, val);
+					}
 				} else {
 					panic!("CsvConfig::parse_value() was not called for a non-empty type T!");
 				}
@@ -628,7 +637,7 @@ impl<G: CombEq + Send + Sync, T: Send + Sync> CombMap<G, T> {
 		#[cfg(feature = "kdam")]
 		if config.use_tqdm { it = Box::new(it.tqdm()); }
 
-		let map = it.par_bridge()
+		let entries: Vec<_> = it.par_bridge()
 			.filter_map(|record| config.read_entry(&record))
 			.map(|(g, val)| {
 				if let Some(val) = val {
@@ -641,7 +650,13 @@ impl<G: CombEq + Send + Sync, T: Send + Sync> CombMap<G, T> {
 					}
 				}
 			})
-			.collect::<Self>();
+			.collect();
+		let mut map = Self::new();
+		if config.dedup {
+			map.par_extend(entries);
+		} else {
+			map.par_extend_unchecked(entries);
+		}
 		Ok(map)
 	}
 	pub fn save_ord_csv(&self, config: CsvConfig<G, T>) -> std::io::Result<()> where G: CombCsv + CombEnum<usize>, G::Iter: Send + Sync {
