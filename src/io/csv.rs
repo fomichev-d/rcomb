@@ -7,12 +7,12 @@ pub trait CombCsv: Sized {
 	fn from_csv_string<S: AsRef<str>>(s: S) -> Result<Self, Self::Err>;
 }
 
-pub struct CsvColumn<G, T> {
+pub struct CsvColumn<'a, G, T> {
 	header: String,
-	fmt: Box<dyn Fn(&G, &T) -> String + Send + Sync>,
-	filter: Option<Box<dyn Fn(&str) -> bool>>
+	fmt: Box<dyn Fn(&G, &T) -> String + Send + Sync + 'a>,
+	filter: Option<Box<dyn Fn(&str) -> bool + 'a>>
 }
-impl<G, T> CsvColumn<G, T> {
+impl<'a, G, T> CsvColumn<'a, G, T> {
 	pub fn skip<S: Into<String>>(header: S) -> Self {
 		Self {
 			header: header.into(),
@@ -20,16 +20,16 @@ impl<G, T> CsvColumn<G, T> {
 			filter: None
 		}
 	}
-	pub fn filter(mut self, filter: Box<dyn Fn(&str) -> bool>) -> Self {
-		self.filter = Some(filter);
+	pub fn filter<F: Fn(&str) -> bool + 'a>(mut self, filter: F) -> Self {
+		self.filter = Some(Box::new(filter));
 		self
 	}
-	pub fn for_map<S: Into<String>>(header: S, fmt: Box<dyn Fn(&G, &T) -> String + Send + Sync>) -> Self {
-		Self { header: header.into(), fmt, filter: None }
+	pub fn for_map<S: Into<String>, F: Fn(&G, &T) -> String + Send + Sync + 'a>(header: S, fmt: F) -> Self {
+		Self { header: header.into(), fmt: Box::new(fmt), filter: None }
 	}
 }
-impl<G> CsvColumn<G, ()> {
-	pub fn for_set<S: Into<String>>(header: S, fmt: Box<dyn Fn(&G) -> String + Send + Sync>) -> Self where G: 'static {
+impl<'a, G> CsvColumn<'a, G, ()> {
+	pub fn for_set<S: Into<String>, F: Fn(&G) -> String + Send + Sync + 'a>(header: S, fmt: F) -> Self where G: 'static {
 		Self {
 			header: header.into(),
 			fmt: Box::new(move |g, ()| fmt(g)),
@@ -38,26 +38,26 @@ impl<G> CsvColumn<G, ()> {
 	}
 }
 
-pub struct CsvConfig<G: CombCsv, T> {
+pub struct CsvConfig<'a, G: CombCsv, T> {
 	pub(crate) use_header: bool,
 	pub(crate) use_tqdm: bool,
 	pub(crate) filename: String,
-	columns_pre: Vec<CsvColumn<G, T>>,
+	columns_pre: Vec<CsvColumn<'a, G, T>>,
 	key_idx: usize,
 	key_header: String,
-	key_filter: Option<Box<dyn Fn(&G) -> bool>>,
-	columns_mid: Vec<CsvColumn<G, T>>,
+	key_filter: Option<Box<dyn Fn(&G) -> bool + 'a>>,
+	columns_mid: Vec<CsvColumn<'a, G, T>>,
 	value_idx: Option<usize>,
 	value_header: Option<String>,
-	value_fmt: Option<Box<dyn Fn(&T) -> String + Send + Sync>>,
-	value_parser: Option<Box<dyn Fn(&str) -> T>>,
-	value_filter: Option<Box<dyn Fn(&T) -> bool>>,
-	columns_post: Vec<CsvColumn<G, T>>
+	value_fmt: Option<Box<dyn Fn(&T) -> String + Send + Sync + 'a>>,
+	value_parser: Option<Box<dyn Fn(&str) -> T + 'a>>,
+	value_filter: Option<Box<dyn Fn(&T) -> bool + 'a>>,
+	columns_post: Vec<CsvColumn<'a, G, T>>
 }
 // TODO: tqdm config
-unsafe impl<G: CombCsv, T> Send for CsvConfig<G, T> {}
-unsafe impl<G: CombCsv, T> Sync for CsvConfig<G, T> {}
-impl<G: CombCsv, T> CsvConfig<G, T> {
+unsafe impl<'a, G: CombCsv, T> Send for CsvConfig<'a, G, T> {}
+unsafe impl<'a, G: CombCsv, T> Sync for CsvConfig<'a, G, T> {}
+impl<'a, G: CombCsv, T> CsvConfig<'a, G, T> {
 	pub fn new<S: Into<String>>(filename: S) -> Self {
 		Self {
 			use_header: false,
@@ -88,17 +88,17 @@ impl<G: CombCsv, T> CsvConfig<G, T> {
 		self.key_header = key_header.into();
 		self
 	}
-	pub fn filter_key(mut self, filter: Box<dyn Fn(&G) -> bool>) -> Self {
-		self.key_filter = Some(filter);
+	pub fn filter_key<F: Fn(&G) -> bool + 'a>(mut self, filter: F) -> Self {
+		self.key_filter = Some(Box::new(filter));
 		self
 	}
-	pub fn filter_value(mut self, filter: Box<dyn Fn(&T) -> bool>) -> Self {
-		self.value_filter = Some(filter);
+	pub fn filter_value<F: Fn(&T) -> bool + 'a>(mut self, filter: F) -> Self {
+		self.value_filter = Some(Box::new(filter));
 		self
 	}
-	pub fn fmt_value<S: Into<String>>(mut self, header: S, fmt: Box<dyn Fn(&T) -> String + Send + Sync>) -> Self {
+	pub fn fmt_value<S: Into<String>, F: Fn(&T) -> String + Send + Sync + 'a>(mut self, header: S, fmt: F) -> Self {
 		self.value_header = Some(header.into());
-		self.value_fmt = Some(fmt);
+		self.value_fmt = Some(Box::new(fmt));
 		self.value_idx = Some(self.columns_pre.len() + 1 + self.columns_mid.len());
 		self
 	}
@@ -108,16 +108,16 @@ impl<G: CombCsv, T> CsvConfig<G, T> {
 		self.value_idx = Some(self.columns_pre.len() + 1 + self.columns_mid.len());
 		self
 	}
-	pub fn parse_value<S: Into<String>>(mut self, header: S, parser: Box<dyn Fn(&str) -> T>) -> Self {
+	pub fn parse_value<S: Into<String>, F: Fn(&str) -> T + 'a>(mut self, header: S, parser: F) -> Self {
 		self.value_header = Some(header.into());
-		self.value_parser = Some(parser);
+		self.value_parser = Some(Box::new(parser));
 		self.value_idx = Some(self.columns_pre.len() + 1 + self.columns_mid.len());
 		self
 	}
 	pub fn columns<
-		I1: IntoIterator<Item=CsvColumn<G, T>>,
-		I2: IntoIterator<Item=CsvColumn<G, T>>,
-		I3: IntoIterator<Item=CsvColumn<G, T>>
+		I1: IntoIterator<Item=CsvColumn<'a, G, T>>,
+		I2: IntoIterator<Item=CsvColumn<'a, G, T>>,
+		I3: IntoIterator<Item=CsvColumn<'a, G, T>>
 	>(mut self, columns_pre: I1, columns_mid: I2, columns_post: I3) -> Self {
 		self.columns_pre = columns_pre.into_iter().collect();
 		self.columns_mid = columns_mid.into_iter().collect();

@@ -12,7 +12,6 @@ use rayon::iter::{
 	ParallelIterator
 };
 
-use std::borrow::Borrow;
 use std::collections::HashMap;
 #[cfg(feature = "rayon")]
 use std::collections::HashSet;
@@ -236,7 +235,7 @@ impl<G: CombEq + Clone, Strategy: IndexStrategy> CombIndex<G, Strategy> {
 		self.vals.is_empty()
 	}
 	#[inline]
-	pub fn contains_val<Q: Borrow<G>>(&self, g: &Q) -> bool {
+	pub fn contains_val(&self, g: &G) -> bool {
 		self.keys.contains_key(g)
 	}
 	#[inline]
@@ -244,7 +243,7 @@ impl<G: CombEq + Clone, Strategy: IndexStrategy> CombIndex<G, Strategy> {
 		self.vals.contains_key(&i)
 	}
 	#[inline]
-	pub fn idx<Q: Borrow<G>>(&self, g: &Q) -> Option<usize> {
+	pub fn idx(&self, g: &G) -> Option<usize> {
 		self.keys.get(g).copied()
 	}
 	#[inline]
@@ -268,7 +267,7 @@ impl<G: CombEq + Clone, Strategy: IndexStrategy> CombIndex<G, Strategy> {
 		}
 	}
 	#[inline]
-	pub fn remove_val<Q: Borrow<G>>(&mut self, g: &Q) -> Option<(usize, G)> {
+	pub fn remove_val(&mut self, g: &G) -> Option<(usize, G)> {
 		if let Some(i) = self.keys.remove(g) {
 			let g = self.vals.remove(&i).unwrap();
 			Strategy::on_remove(self, i);
@@ -306,7 +305,7 @@ impl<G: CombEq + Clone + Send + Sync, Strategy: IndexStrategy> CombIndex<G, Stra
 		self.keys.par_contains_key(g)
 	}
 	#[inline]
-	pub fn par_idx<Q: Borrow<G>>(&self, g: &Q) -> Option<usize> {
+	pub fn par_idx(&self, g: &G) -> Option<usize> {
 		self.keys.par_get(g).copied()
 	}
 	#[inline]
@@ -326,7 +325,7 @@ impl<G: CombEq + Clone + Send + Sync, Strategy: IndexStrategy> CombIndex<G, Stra
 		}
 	}
 	#[inline]
-	pub fn par_remove_val<Q: Borrow<G>>(&mut self, g: &Q) -> Option<(usize, G)> {
+	pub fn par_remove_val(&mut self, g: &G) -> Option<(usize, G)> {
 		if let Some(i) = self.keys.par_remove(g) {
 			let g = self.vals.remove(&i).unwrap();
 			Strategy::on_par_remove(self, i);
@@ -499,16 +498,16 @@ impl<G: Hash + Eq + Clone, Strategy: IndexStrategy> HashIndex<G, Strategy> {
 		self.vals.is_empty()
 	}
 	#[inline]
-	pub fn contains_val<Q: Borrow<G>>(&self, g: &Q) -> bool {
-		self.keys.contains_key(g.borrow())
+	pub fn contains_val(&self, g: &G) -> bool {
+		self.keys.contains_key(g)
 	}
 	#[inline]
 	pub fn contains_idx(&self, i: usize) -> bool {
 		self.vals.contains_key(&i)
 	}
 	#[inline]
-	pub fn idx<Q: Borrow<G>>(&self, g: &Q) -> Option<usize> {
-		self.keys.get(g.borrow()).copied()
+	pub fn idx(&self, g: &G) -> Option<usize> {
+		self.keys.get(g).copied()
 	}
 	#[inline]
 	pub fn val(&self, i: usize) -> Option<&G> {
@@ -531,8 +530,8 @@ impl<G: Hash + Eq + Clone, Strategy: IndexStrategy> HashIndex<G, Strategy> {
 		}
 	}
 	#[inline]
-	pub fn remove_val<Q: Borrow<G>>(&mut self, g: &Q) -> Option<(usize, G)> {
-		if let Some(i) = self.keys.remove(g.borrow()) {
+	pub fn remove_val(&mut self, g: &G) -> Option<(usize, G)> {
+		if let Some(i) = self.keys.remove(g) {
 			let g = self.vals.remove(&i).unwrap();
 			Strategy::on_remove(self, i);
 			Some((i, g))

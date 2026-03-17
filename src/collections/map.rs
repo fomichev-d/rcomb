@@ -13,7 +13,7 @@ use rayon::iter::{
 	ParallelExtend
 };
 
-use std::{borrow::Borrow, fmt::Debug};
+use std::fmt::Debug;
 use std::collections::HashMap;
 
 // TODO: map isomorphism
@@ -258,8 +258,7 @@ impl<G: CombEq, T> CombMap<G, T> {
 	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](Self::insert_unchecked)), an arbitrary one is picked.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn remove<Q: Borrow<G>>(&mut self, g: &Q) -> Option<T> {
-		let g = g.borrow();
+	pub fn remove(&mut self, g: &G) -> Option<T> {
 		let key = g.hash();
 		match self.buckets.get_mut(&key) {
 			Some(bucket) => {
@@ -315,8 +314,7 @@ impl<G: CombEq, T> CombMap<G, T> {
 	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](Self::insert_unchecked)), an arbitrary one is picked.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn get<Q: Borrow<G>>(&self, g: &Q) -> Option<&T> {
-		let g = g.borrow();
+	pub fn get(&self, g: &G) -> Option<&T> {
 		let key = g.hash();
 		match self.buckets.get(&key) {
 			Some(bucket) => {
@@ -335,8 +333,7 @@ impl<G: CombEq, T> CombMap<G, T> {
 	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](Self::insert_unchecked)), an arbitrary one is picked.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn get_mut<Q: Borrow<G>>(&mut self, g: &Q) -> Option<&mut T> {
-		let g = g.borrow();
+	pub fn get_mut(&mut self, g: &G) -> Option<&mut T> {
 		let key = g.hash();
 		match self.buckets.get_mut(&key) {
 			Some(bucket) => {
@@ -352,7 +349,7 @@ impl<G: CombEq, T> CombMap<G, T> {
 	}
 	/// Returns `true` if the map contains a value for the specified key.
 	#[inline]
-	pub fn contains_key<Q: Borrow<G>>(&self, g: &Q) -> bool {
+	pub fn contains_key(&self, g: &G) -> bool {
 		self.get(g).is_some()
 	}
 	/// An iterator visiting all key-value pairs in arbitrary order.
@@ -493,8 +490,7 @@ impl<G: CombEq + Send + Sync, T: Send + Sync> CombMap<G, T> {
 		}
 	}
 	#[inline]
-	pub fn par_remove<Q: Borrow<G>>(&mut self, g: &Q) -> Option<T> {
-		let g = g.borrow();
+	pub fn par_remove(&mut self, g: &G) -> Option<T> {
 		let key = g.hash();
 		match self.buckets.get_mut(&key) {
 			Some(bucket) => {
@@ -546,8 +542,7 @@ impl<G: CombEq + Send + Sync, T: Send + Sync> CombMap<G, T> {
 		});
 	}
 	#[inline]
-	pub fn par_get<Q: Borrow<G>>(&self, g: &Q) -> Option<&T> {
-		let g = g.borrow();
+	pub fn par_get(&self, g: &G) -> Option<&T> {
 		let key = g.hash();
 		match self.buckets.get(&key) {
 			Some(bucket) => {
@@ -559,8 +554,7 @@ impl<G: CombEq + Send + Sync, T: Send + Sync> CombMap<G, T> {
 		}
 	}
 	#[inline]
-	pub fn par_get_mut<Q: Borrow<G>>(&mut self, g: &Q) -> Option<&mut T> {
-		let g = g.borrow();
+	pub fn par_get_mut(&mut self, g: &G) -> Option<&mut T> {
 		let key = g.hash();
 		match self.buckets.get_mut(&key) {
 			Some(bucket) => {
@@ -572,7 +566,7 @@ impl<G: CombEq + Send + Sync, T: Send + Sync> CombMap<G, T> {
 		}
 	}
 	#[inline]
-	pub fn par_contains_key<Q: Borrow<G>>(&self, g: &Q) -> bool {
+	pub fn par_contains_key(&self, g: &G) -> bool {
 		self.par_get(g).is_some()
 	}
 	#[inline]

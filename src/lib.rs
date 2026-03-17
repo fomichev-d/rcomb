@@ -22,15 +22,15 @@ pub mod collections {
 	pub mod index;
 }
 
-mod objects {
+pub mod objects {
 	#[cfg(feature = "petgraph")]
-	pub mod graphs;
-	pub mod chord_diagram;
+	mod graphs;
+	#[cfg(feature = "petgraph")]
+	pub use graphs::*;
+
+	mod chord_diagram;
+	pub use chord_diagram::*;
 }
-#[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
-#[cfg(feature = "petgraph")]
-pub use objects::graphs;
-pub use objects::chord_diagram;
 
 pub mod io {
 	mod csv;

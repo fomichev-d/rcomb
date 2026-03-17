@@ -10,8 +10,6 @@ use rayon::iter::{
 	ParallelExtend
 };
 
-use std::borrow::Borrow;
-
 /// A set structure where item equality is considered up to isomorphism.
 ///
 /// It should be used when checking key isomorphism is significantly more computationally expensive than computing a hash.
@@ -142,7 +140,7 @@ impl<G: CombEq> CombSet<G> {
 	/// If there are several isomorphic items (e.g. after [`insert_unchecked`](Self::insert_unchecked)), an arbitrary one is picked.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn remove<Q: Borrow<G>>(&mut self, g: &Q) { self.0.remove(g); }
+	pub fn remove(&mut self, g: &G) { self.0.remove(g); }
 	/// Extends the set with the contents of the iterator, assuming the items are not isomorphic to each other or any present ones.
 	///
 	/// If the set or the iterator did have isomorphic items, it will now store several isomorphic items.
@@ -161,7 +159,7 @@ impl<G: CombEq> CombSet<G> {
 	pub fn dedup(&mut self) { self.0.dedup() }
 	/// Returns `true` if the set contains an isomorphic item.
 	#[inline]
-	pub fn contains<Q: Borrow<G>>(&self, g: &Q) -> bool { self.0.contains_key(g) }
+	pub fn contains(&self, g: &G) -> bool { self.0.contains_key(g) }
 	/// An iterator visiting all items in arbitrary order.
 	/// The iterator element type is `&'a G`.
 	#[inline]
@@ -184,7 +182,7 @@ impl<G: CombEq + Send + Sync> CombSet<G> {
 		self.0.par_insert(g, ());
 	}
 	#[inline]
-	pub fn par_remove<Q: Borrow<G>>(&mut self, g: &Q) {
+	pub fn par_remove(&mut self, g: &G) {
 		self.0.par_remove(g);
 	}
 	#[inline]
@@ -194,7 +192,7 @@ impl<G: CombEq + Send + Sync> CombSet<G> {
 	#[inline]
 	pub fn par_retain<F: Fn(&G) -> bool + Copy + Sync>(&mut self, f: F) { self.0.par_retain(|g, ()| f(g)) }
 	#[inline]
-	pub fn par_contains<Q: Borrow<G>>(&self, g: &Q) -> bool { self.0.par_contains_key(g) }
+	pub fn par_contains(&self, g: &G) -> bool { self.0.par_contains_key(g) }
 	#[inline]
 	pub fn par_dedup(&mut self) { self.0.par_dedup() }
 	#[inline]
