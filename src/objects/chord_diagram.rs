@@ -1,3 +1,5 @@
+#[cfg(feature = "petgraph")]
+use crate::objects::graph::Graph;
 use crate::*;
 use crate::io::*;
 
@@ -116,19 +118,19 @@ impl ChordDiagram {
 	}
 	#[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 	#[cfg(feature = "petgraph")]
-	pub fn intersection_graph<Ix: petgraph::graph::IndexType>(&self) -> petgraph::graph::UnGraph<(), (), Ix> {
-		let mut graph = petgraph::graph::UnGraph::default();
+	pub fn intersection_graph(&self) -> Graph {
+		let mut graph = Graph::default();
 		let chords: Vec<u8> = self.ends.iter()
 			.sorted()
 			.dedup()
 			.cloned()
 			.collect();
 		let nodes = chords.iter()
-			.map(|&a| (a, graph.add_node(())))
+			.map(|&a| (a, graph.add_vertex()))
 			.collect::<HashMap<_, _>>();
 		for &a in chords.iter() {
 			for b in self.neighbours(a).into_iter().filter(|&b| a < b) {
-				graph.add_edge(nodes[&a], nodes[&b], ());
+				graph.add_edge(nodes[&a], nodes[&b]);
 			}
 		}
 		graph
@@ -214,7 +216,7 @@ impl Iterator for ChordDiagramIterator {
 //#[cfg(any(all(feature = "petgraph", feature = "rayon"), doc))]
 #[cfg_attr(docsrs, doc(cfg(all(feature = "petgraph", feature = "rayon"))))]
 #[cfg(all(feature = "petgraph", feature = "rayon"))]
-pub fn intersection_graphs<Ix: petgraph::graph::IndexType + Send + Sync>(size: usize) -> impl Iterator<Item=(petgraph::graph::UnGraph<(), (), Ix>, ChordDiagram)> + Sync + Send {
+pub fn intersection_graphs(size: usize) -> impl Iterator<Item=(Graph, ChordDiagram)> + Sync + Send {
 	use crate::collections::set::*;
 	ChordDiagram::iterate_deg(size)
 		.map(|diag| (diag.intersection_graph(), diag))
@@ -233,7 +235,7 @@ pub fn intersection_graphs<Ix: petgraph::graph::IndexType + Send + Sync>(size: u
 //#[cfg(any(all(feature = "petgraph", not(feature = "rayon")), doc))]
 #[cfg_attr(docsrs, doc(cfg(all(feature = "petgraph", not(feature = "rayon")))))]
 #[cfg(all(feature = "petgraph", not(feature = "rayon")))]
-pub fn intersection_graphs<Ix: petgraph::graph::IndexType>(size: usize) -> impl Iterator<Item=(petgraph::graph::UnGraph<(), (), Ix>, ChordDiagram)> {
+pub fn intersection_graphs(size: usize) -> impl Iterator<Item=(Graph, ChordDiagram)> {
 	use crate::collections::set::*;
 	ChordDiagram::iterate_deg(size)
 		.map(|diag| (diag.intersection_graph(), diag))
@@ -280,7 +282,7 @@ mod tests {
 			1, 1, 2, 4, 11, 34, 154, 978
 		];
 		for n in 0..values.len() {
-			assert_eq!(intersection_graphs::<petgraph::graph::DefaultIx>(n).count(), values[n]);
+			assert_eq!(intersection_graphs(n).count(), values[n]);
 		}
 	}
 }

@@ -171,8 +171,8 @@ impl<'a, G: CombEq + Sync, T: Sync> IntoParallelIterator for &'a CombMap<G, T> {
 	type Item = (&'a G, &'a T);
 	fn into_par_iter(self) -> Self::Iter {
 		self.buckets.par_iter()
-			.flat_map(entry_value as fn((&'a Vec<usize>, &'a Vec<(G, T)>)) -> &'a Vec<(G, T)>)
-			.map(|(g, val)| (g, val))
+			.flat_map((|(_, bucket)| { bucket }) as fn((&'a Vec<usize>, &'a Vec<(G, T)>)) -> &'a Vec<(G, T)>)
+			.map((|(g, val)| { (g, val) }) as fn(&(G, T)) -> (&G, &T))
 	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
@@ -182,7 +182,7 @@ impl<'a, G: CombEq + Send + Sync, T: Send + Sync> IntoParallelIterator for &'a m
 	type Item = (&'a G, &'a mut T);
 	fn into_par_iter(self) -> Self::Iter {
 		self.buckets.par_iter_mut()
-			.flat_map(entry_value as fn((&'a Vec<usize>, &'a mut Vec<(G, T)>)) -> &'a mut Vec<(G, T)>)
+			.flat_map((|(_, bucket)| { bucket }) as fn((&'a Vec<usize>, &'a mut Vec<(G, T)>)) -> &'a mut Vec<(G, T)>)
 			.map(|(g, val)| (g, val))
 	}
 }

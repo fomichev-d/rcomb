@@ -24,12 +24,10 @@ pub mod collections {
 
 pub mod objects {
 	#[cfg(feature = "petgraph")]
-	mod graphs;
+	pub mod graph;
 	#[cfg(feature = "petgraph")]
-	pub use graphs::*;
-
-	mod chord_diagram;
-	pub use chord_diagram::*;
+	pub mod framed_graph;
+	pub mod chord_diagram;
 }
 
 pub mod io {
@@ -44,11 +42,11 @@ pub trait CombEq<G = Self> {
 	fn is_isomorphic(&self, other: &G) -> bool;
 }
 
-pub trait CombGrad<T: Copy + Eq + Ord + Send + Sync = usize> {
+pub trait CombGrad<T: Copy + Eq + Send + Sync = usize> {
 	fn degree(&self) -> T;
 }
 
-pub trait CombEnum<T: Copy + Eq + Ord + Send + Sync>: CombGrad<T> {
+pub trait CombEnum<T: Copy + Eq + Send + Sync>: CombGrad<T> {
 	type Iter: Iterator<Item=Self>;
 	fn iterate_deg_inner(degree: T) -> Self::Iter;
 

@@ -1,4 +1,4 @@
-use rcomb::petgraph::graph::UnGraph;
+use rcomb::objects::graph::Graph;
 use rcomb::*;
 
 use std::hint::black_box;
@@ -8,7 +8,7 @@ use criterion::{criterion_main, criterion_group, Criterion};
 const N: usize = 8;
 
 fn iter_geng(n: usize) -> usize {
-	UnGraph::iterate_deg(n).count()
+	Graph::iterate_deg(n).count()
 }
 
 fn bench_geng(c: &mut Criterion) {

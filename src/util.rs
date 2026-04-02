@@ -37,10 +37,6 @@ pub fn divisors(n: u128) -> Vec<u128> {
 }
 
 #[cfg(feature = "rayon")]
-#[inline]
-pub fn entry_value<G, T>(tuple: (G, T)) -> T { tuple.1 }
-
-#[cfg(feature = "rayon")]
 pub fn par_dedup<T: Sync, F: Fn(&T, &T) -> bool + Sync>(data: &mut Vec<T>, eq: F) {
 	use rayon::iter::{ParallelIterator, ParallelBridge};
 	use uf_rush::UFRush;
