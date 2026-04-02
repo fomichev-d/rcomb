@@ -107,6 +107,33 @@ impl<G: CombEq, H: CombEq<G> + Into<G>> Extend<H> for CombSet<G> {
 		self.0.extend(it.into_iter().map(|g| (g, ())))
 	}
 }
+impl<G: CombEq> CollectionCsvExt<G, ()> for CombSet<G> {
+	#[inline]
+	fn read_csv(config: CsvConfig<G, ()>) -> std::io::Result<Self> where G: CombCsv {
+		Ok(Self(CombMap::read_csv(config)?))
+	}
+	#[inline]
+	fn save_csv(&self, config: CsvConfig<G, ()>) -> std::io::Result<()> where G: CombCsv {
+		self.0.save_csv(config)
+	}
+
+	#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+	#[cfg(feature = "rayon")]
+	#[inline]
+	fn par_read_csv(config: CsvConfig<G, ()>) -> std::io::Result<Self> where G: CombCsv + Send + Sync {
+		Ok(Self(CombMap::par_read_csv(config)?))
+	}
+	#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+	#[cfg(feature = "rayon")]
+	#[inline]
+	fn save_ord_csv(&self, config: CsvConfig<G, ()>) -> std::io::Result<()> where G: CombCsv + CombEnum<usize> + Send + Sync, G::Iter: Send + Sync {
+		self.0.save_ord_csv(config)
+	}
+	#[cfg(not(feature = "rayon"))]
+	fn save_ord_csv(&self, config: CsvConfig<G, ()>) -> std::io::Result<()> where G: CombCsv + CombEnum<usize> {
+		self.0.save_ord_csv(config)
+	}
+}
 impl<G: CombEq> CombSet<G> {
 	/// Creates an empty set.
 	pub fn new() -> Self { Self::default() }
@@ -166,14 +193,6 @@ impl<G: CombEq> CombSet<G> {
 	pub fn iter(&self) -> <&Self as IntoIterator>::IntoIter {
 		self.into_iter()
 	}
-	#[inline]
-	pub fn read_csv(config: CsvConfig<G, ()>) -> std::io::Result<Self> where G: CombCsv {
-		Ok(Self(CombMap::read_csv(config)?))
-	}
-	#[inline]
-	pub fn save_csv(&self, config: CsvConfig<G, ()>) -> std::io::Result<()> where G: CombCsv {
-		self.0.save_csv(config)
-	}
 }
 #[cfg(feature = "rayon")]
 impl<G: CombEq + Send + Sync> CombSet<G> {
@@ -195,12 +214,4 @@ impl<G: CombEq + Send + Sync> CombSet<G> {
 	pub fn par_contains<H: CombEq<G> + Sync>(&self, g: &H) -> bool { self.0.par_contains_key(g) }
 	#[inline]
 	pub fn par_dedup(&mut self) { self.0.par_dedup() }
-	#[inline]
-	pub fn par_read_csv(config: CsvConfig<G, ()>) -> std::io::Result<Self> where G: CombCsv {
-		Ok(Self(CombMap::par_read_csv(config)?))
-	}
-	#[inline]
-	pub fn save_ord_csv(&self, config: CsvConfig<G, ()>) -> std::io::Result<()> where G: CombCsv + CombEnum<usize>, G::Iter: Send + Sync {
-		self.0.save_ord_csv(config)
-	}
 }

@@ -15,6 +15,7 @@ use rayon::iter::{
 
 use std::fmt::Debug;
 use std::collections::HashMap;
+use std::hash::Hash;
 
 // TODO: map isomorphism
 
@@ -201,6 +202,173 @@ impl<G: CombEq, T> std::ops::IndexMut<&G> for CombMap<G, T> {
 	}
 }
 */
+impl<G: CombEq, T> CollectionCsvExt<G, T> for CombMap<G, T> {
+	fn read_csv(config: CsvConfig<G, T>) -> std::io::Result<Self> where G: CombCsv {
+		#[cfg(feature = "kdam")]
+		use kdam::TqdmIterator;
+
+		let reader = csv::ReaderBuilder::new()
+			.has_headers(config.use_header)
+			.from_path(&config.filename)?;
+		let mut map = Self::new();
+
+		#[allow(unused_mut)]
+		let mut it: Box<dyn Iterator<Item=csv::StringRecord>> = Box::new(reader.into_records()
+			.filter_map(|result| result.ok())
+		);
+		#[cfg(feature = "kdam")]
+		if config.use_tqdm { it = Box::new(it.tqdm()); }
+
+		for (g, val) in it.filter_map(|record| config.read_entry(&record)) {
+			if let Some(val) = val {
+				if config.dedup {
+					map.insert(g, val);
+				} else {
+					map.insert_unchecked(g, val);
+				}
+			} else {
+				if std::mem::size_of::<T>() == std::mem::size_of::<()>() {
+					let val = unsafe { std::mem::MaybeUninit::<T>::zeroed().assume_init() };
+					if config.dedup {
+						map.insert(g, val);
+					} else {
+						map.insert_unchecked(g, val);
+					}
+				} else {
+					panic!("CsvConfig::parse_value() was not called for a non-empty type T!");
+				}
+			}
+		}
+		Ok(map)
+	}
+	fn save_csv(&self, config: CsvConfig<G, T>) -> std::io::Result<()> where G: CombCsv {
+		#[cfg(feature = "kdam")]
+		use kdam::TqdmIterator;
+
+		let mut writer = csv::Writer::from_path(&config.filename)?;
+		if config.use_header { writer.write_record(config.write_header())?; }
+
+		#[allow(unused_mut)]
+		let mut it: Box<dyn Iterator<Item=(&G, &T)>> = Box::new(self.iter());
+
+		#[cfg(feature = "kdam")]
+		if config.use_tqdm {
+			it = Box::new(it.tqdm());
+		}
+
+		for (g, val) in it {
+			if let Some(entry) = config.write_entry(g, val) {
+				writer.write_record(entry)?;
+			}
+		}
+		Ok(())
+	}
+
+	#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+	#[cfg(feature = "rayon")]
+	fn par_read_csv(config: CsvConfig<G, T>) -> std::io::Result<Self> where G: CombCsv + Send + Sync, T: Send + Sync {
+		#[cfg(feature = "kdam")]
+		use kdam::TqdmIterator;
+
+		let reader = csv::ReaderBuilder::new()
+			.has_headers(config.use_header)
+			.from_path(&config.filename)?;
+		
+		#[allow(unused_mut)]
+		let mut it: Box<dyn Iterator<Item=csv::StringRecord> + Send + Sync> = Box::new(reader.into_records()
+			.filter_map(|result| result.ok())
+		);
+		#[cfg(feature = "kdam")]
+		if config.use_tqdm { it = Box::new(it.tqdm()); }
+
+		let entries: Vec<_> = it.par_bridge()
+			.filter_map(|record| config.read_entry(&record))
+			.map(|(g, val)| {
+				if let Some(val) = val {
+					(g, val)
+				} else {
+					if std::mem::size_of::<T>() == std::mem::size_of::<()>() {
+						(g, unsafe { std::mem::MaybeUninit::<T>::zeroed().assume_init() })
+					} else {
+						panic!("CsvConfig::parse_value() was not called for a non-empty type T!");
+					}
+				}
+			})
+			.collect();
+		let mut map = Self::new();
+		if config.dedup {
+			map.par_extend(entries);
+		} else {
+			map.par_extend_unchecked(entries);
+		}
+		Ok(map)
+	}
+	#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+	#[cfg(feature = "rayon")]
+	fn save_ord_csv(&self, config: CsvConfig<G, T>) -> std::io::Result<()> where G: CombCsv + CombEnum<usize> + Send + Sync, G::Iter: Send + Sync, T: Send + Sync {
+		#[cfg(feature = "kdam")]
+		use kdam::TqdmIterator;
+		use rayon::prelude::ParallelSliceMut;
+
+		let max_deg = self.keys()
+			.par_bridge()
+			.map(|g| g.degree())
+			.max()
+			.unwrap_or(0);
+
+		let mut writer = csv::Writer::from_path(&config.filename)?;
+		if config.use_header { writer.write_record(config.write_header())?; }
+
+		for deg in 0..=max_deg {
+			#[allow(unused_mut)]
+			let mut it: Box<dyn Iterator<Item=(usize, G)> + Send + Sync> = Box::new(G::iterate_deg(deg).enumerate());
+			#[cfg(feature = "kdam")]
+			if config.use_tqdm { it = Box::new(it.tqdm()); }
+			let mut entries = it.par_bridge()
+				.filter_map(|(i, g)| {
+					self.get(&g).map(|val| (i, g, val))
+				})
+				.filter_map(|(i, g, val)| config.write_entry(&g, val).map(|entry| (i, entry)))
+				.collect::<Vec<_>>();
+			entries.par_sort_unstable_by_key(|&(i, _)| i);
+			for (_, entry) in entries {
+				writer.write_record(entry)?;
+			}
+		}
+		Ok(())
+	}
+	#[cfg(not(feature = "rayon"))]
+	fn save_ord_csv(&self, config: CsvConfig<G, T>) -> std::io::Result<()> where G: CombCsv + CombEnum<usize> {
+		#[cfg(feature = "kdam")]
+		use kdam::TqdmIterator;
+
+		let max_deg = self.keys()
+			.map(|g| g.degree())
+			.max()
+			.unwrap_or(0);
+
+		let mut writer = csv::Writer::from_path(&config.filename)?;
+		if config.use_header { writer.write_record(config.write_header())?; }
+
+		for deg in 0..=max_deg {
+			#[allow(unused_mut)]
+			let mut it: Box<dyn Iterator<Item=(usize, G)>> = Box::new(G::iterate_deg(deg).enumerate());
+			#[cfg(feature = "kdam")]
+			if config.use_tqdm { it = Box::new(it.tqdm()); }
+			let mut entries = it
+				.filter_map(|(i, g)| {
+					self.get(&g).map(|val| (i, g, val))
+				})
+				.filter_map(|(i, g, val)| config.write_entry(&g, val).map(|entry| (i, entry)))
+				.collect::<Vec<_>>();
+			entries.sort_unstable_by_key(|&(i, _)| i);
+			for (_, entry) in entries {
+				writer.write_record(entry)?;
+			}
+		}
+		Ok(())
+	}
+}
 impl<G: CombEq, T> CombMap<G, T> {
 	/// Creates an empty map.
 	pub fn new() -> Self { Self::default() }
@@ -416,67 +584,6 @@ impl<G: CombEq, T> CombMap<G, T> {
 		)).collect();
 		CombMap { buckets }
 	}
-
-	pub fn read_csv(config: CsvConfig<G, T>) -> std::io::Result<Self> where G: CombCsv {
-		#[cfg(feature = "kdam")]
-		use kdam::TqdmIterator;
-
-		let reader = csv::ReaderBuilder::new()
-			.has_headers(config.use_header)
-			.from_path(&config.filename)?;
-		let mut map = Self::new();
-
-		#[allow(unused_mut)]
-		let mut it: Box<dyn Iterator<Item=csv::StringRecord>> = Box::new(reader.into_records()
-			.filter_map(|result| result.ok())
-		);
-		#[cfg(feature = "kdam")]
-		if config.use_tqdm { it = Box::new(it.tqdm()); }
-
-		for (g, val) in it.filter_map(|record| config.read_entry(&record)) {
-			if let Some(val) = val {
-				if config.dedup {
-					map.insert(g, val);
-				} else {
-					map.insert_unchecked(g, val);
-				}
-			} else {
-				if std::mem::size_of::<T>() == std::mem::size_of::<()>() {
-					let val = unsafe { std::mem::MaybeUninit::<T>::zeroed().assume_init() };
-					if config.dedup {
-						map.insert(g, val);
-					} else {
-						map.insert_unchecked(g, val);
-					}
-				} else {
-					panic!("CsvConfig::parse_value() was not called for a non-empty type T!");
-				}
-			}
-		}
-		Ok(map)
-	}
-	pub fn save_csv(&self, config: CsvConfig<G, T>) -> std::io::Result<()> where G: CombCsv {
-		#[cfg(feature = "kdam")]
-		use kdam::TqdmIterator;
-
-		let mut writer = csv::Writer::from_path(&config.filename)?;
-		if config.use_header { writer.write_record(config.write_header())?; }
-
-		#[allow(unused_mut)]
-		let mut it: Box<dyn Iterator<Item=(&G, &T)>> = Box::new(self.iter());
-
-		#[cfg(feature = "kdam")]
-		if config.use_tqdm {
-			it = Box::new(it.tqdm());
-		}
-
-		for (g, val) in it {
-			if let Some(entry) = config.write_entry(g, val) {
-				writer.write_record(entry)?;
-			}
-		}
-		Ok(())
-	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
@@ -621,8 +728,65 @@ impl<G: CombEq + Send + Sync, T: Send + Sync> CombMap<G, T> {
 			.collect();
 		CombMap { buckets }
 	}
+}
 
-	pub fn par_read_csv(config: CsvConfig<G, T>) -> std::io::Result<Self> where G: CombCsv {
+impl<G: Eq + Hash, T> CollectionCsvExt<G, T> for HashMap<G, T> {
+	fn read_csv(config: CsvConfig<G, T>) -> std::io::Result<Self> where G: CombCsv {
+		#[cfg(feature = "kdam")]
+		use kdam::TqdmIterator;
+
+		let reader = csv::ReaderBuilder::new()
+			.has_headers(config.use_header)
+			.from_path(&config.filename)?;
+		let mut map = Self::new();
+
+		#[allow(unused_mut)]
+		let mut it: Box<dyn Iterator<Item=csv::StringRecord>> = Box::new(reader.into_records()
+			.filter_map(|result| result.ok())
+		);
+		#[cfg(feature = "kdam")]
+		if config.use_tqdm { it = Box::new(it.tqdm()); }
+
+		for (g, val) in it.filter_map(|record| config.read_entry(&record)) {
+			if let Some(val) = val {
+				map.insert(g, val);
+			} else {
+				if std::mem::size_of::<T>() == std::mem::size_of::<()>() {
+					let val = unsafe { std::mem::MaybeUninit::<T>::zeroed().assume_init() };
+					map.insert(g, val);
+				} else {
+					panic!("CsvConfig::parse_value() was not called for a non-empty type T!");
+				}
+			}
+		}
+		Ok(map)
+	}
+	fn save_csv(&self, config: CsvConfig<G, T>) -> std::io::Result<()> where G: CombCsv {
+		#[cfg(feature = "kdam")]
+		use kdam::TqdmIterator;
+
+		let mut writer = csv::Writer::from_path(&config.filename)?;
+		if config.use_header { writer.write_record(config.write_header())?; }
+
+		#[allow(unused_mut)]
+		let mut it: Box<dyn Iterator<Item=(&G, &T)>> = Box::new(self.iter());
+
+		#[cfg(feature = "kdam")]
+		if config.use_tqdm {
+			it = Box::new(it.tqdm());
+		}
+
+		for (g, val) in it {
+			if let Some(entry) = config.write_entry(g, val) {
+				writer.write_record(entry)?;
+			}
+		}
+		Ok(())
+	}
+
+	#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+	#[cfg(feature = "rayon")]
+	fn par_read_csv(config: CsvConfig<G, T>) -> std::io::Result<Self> where G: CombCsv + Send + Sync, T: Send + Sync {
 		#[cfg(feature = "kdam")]
 		use kdam::TqdmIterator;
 
@@ -652,14 +816,12 @@ impl<G: CombEq + Send + Sync, T: Send + Sync> CombMap<G, T> {
 			})
 			.collect();
 		let mut map = Self::new();
-		if config.dedup {
-			map.par_extend(entries);
-		} else {
-			map.par_extend_unchecked(entries);
-		}
+		map.par_extend(entries);
 		Ok(map)
 	}
-	pub fn save_ord_csv(&self, config: CsvConfig<G, T>) -> std::io::Result<()> where G: CombCsv + CombEnum<usize>, G::Iter: Send + Sync {
+	#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+	#[cfg(feature = "rayon")]
+	fn save_ord_csv(&self, config: CsvConfig<G, T>) -> std::io::Result<()> where G: CombCsv + CombEnum<usize> + Send + Sync, G::Iter: Send + Sync, T: Send + Sync {
 		#[cfg(feature = "kdam")]
 		use kdam::TqdmIterator;
 		use rayon::prelude::ParallelSliceMut;
@@ -685,6 +847,37 @@ impl<G: CombEq + Send + Sync, T: Send + Sync> CombMap<G, T> {
 				.filter_map(|(i, g, val)| config.write_entry(&g, val).map(|entry| (i, entry)))
 				.collect::<Vec<_>>();
 			entries.par_sort_unstable_by_key(|&(i, _)| i);
+			for (_, entry) in entries {
+				writer.write_record(entry)?;
+			}
+		}
+		Ok(())
+	}
+	#[cfg(not(feature = "rayon"))]
+	fn save_ord_csv(&self, config: CsvConfig<G, T>) -> std::io::Result<()> where G: CombCsv + CombEnum<usize> {
+		#[cfg(feature = "kdam")]
+		use kdam::TqdmIterator;
+
+		let max_deg = self.keys()
+			.map(|g| g.degree())
+			.max()
+			.unwrap_or(0);
+
+		let mut writer = csv::Writer::from_path(&config.filename)?;
+		if config.use_header { writer.write_record(config.write_header())?; }
+
+		for deg in 0..=max_deg {
+			#[allow(unused_mut)]
+			let mut it: Box<dyn Iterator<Item=(usize, G)>> = Box::new(G::iterate_deg(deg).enumerate());
+			#[cfg(feature = "kdam")]
+			if config.use_tqdm { it = Box::new(it.tqdm()); }
+			let mut entries = it
+				.filter_map(|(i, g)| {
+					self.get(&g).map(|val| (i, g, val))
+				})
+				.filter_map(|(i, g, val)| config.write_entry(&g, val).map(|entry| (i, entry)))
+				.collect::<Vec<_>>();
+			entries.sort_unstable_by_key(|&(i, _)| i);
 			for (_, entry) in entries {
 				writer.write_record(entry)?;
 			}
