@@ -116,8 +116,8 @@ impl<G: CombEq + Clone, Strategy: IndexStrategy> FromIterator<G> for CombIndex<G
 		index
 	}
 }
-impl<G: CombEq + Clone, Strategy: IndexStrategy> Extend<G> for CombIndex<G, Strategy> {
-	fn extend<I: IntoIterator<Item=G>>(&mut self, it: I) {
+impl<G: CombEq + Clone, H: CombEq<G> + Into<G>, Strategy: IndexStrategy> Extend<H> for CombIndex<G, Strategy> {
+	fn extend<I: IntoIterator<Item=H>>(&mut self, it: I) {
 		for g in it {
 			self.insert(g);
 		}
@@ -165,10 +165,11 @@ impl<G: CombEq + Clone + Send + Sync, Strategy: IndexStrategy> FromParallelItera
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
-impl<G: CombEq + Clone + Send + Sync, Strategy: IndexStrategy> ParallelExtend<G> for CombIndex<G, Strategy> {
-	fn par_extend<I: IntoParallelIterator<Item=G>>(&mut self, par_iter: I) {
+impl<G: CombEq + Clone + Send + Sync, H: CombEq<G> + Into<G> + Send + Sync, Strategy: IndexStrategy> ParallelExtend<H> for CombIndex<G, Strategy> {
+	fn par_extend<I: IntoParallelIterator<Item=H>>(&mut self, par_iter: I) {
 		let set: CombSet<G> = par_iter.into_par_iter()
 			.filter(|g| !self.par_contains_val(g))
+			.map(|g| g.into())
 			.collect();
 		let n = set.len();
 		if self.next.checked_add(n).is_none() {
@@ -235,7 +236,7 @@ impl<G: CombEq + Clone, Strategy: IndexStrategy> CombIndex<G, Strategy> {
 		self.vals.is_empty()
 	}
 	#[inline]
-	pub fn contains_val(&self, g: &G) -> bool {
+	pub fn contains_val<H: CombEq<G>>(&self, g: &H) -> bool {
 		self.keys.contains_key(g)
 	}
 	#[inline]
@@ -243,7 +244,7 @@ impl<G: CombEq + Clone, Strategy: IndexStrategy> CombIndex<G, Strategy> {
 		self.vals.contains_key(&i)
 	}
 	#[inline]
-	pub fn idx(&self, g: &G) -> Option<usize> {
+	pub fn idx<H: CombEq<G>>(&self, g: &H) -> Option<usize> {
 		self.keys.get(g).copied()
 	}
 	#[inline]
@@ -251,7 +252,7 @@ impl<G: CombEq + Clone, Strategy: IndexStrategy> CombIndex<G, Strategy> {
 		self.vals.get(&i)
 	}
 	#[inline]
-	pub fn insert(&mut self, g: G) -> usize {
+	pub fn insert<H: CombEq<G> + Into<G>>(&mut self, g: H) -> usize {
 		match self.keys.get(&g) {
 			Some(&i) => { i }
 			None => {
@@ -260,6 +261,7 @@ impl<G: CombEq + Clone, Strategy: IndexStrategy> CombIndex<G, Strategy> {
 				}
 				let i = self.next;
 				self.next += 1;
+				let g = g.into();
 				self.vals.insert(i, g.clone());
 				self.keys.insert_unchecked(g, i);
 				i
@@ -267,7 +269,7 @@ impl<G: CombEq + Clone, Strategy: IndexStrategy> CombIndex<G, Strategy> {
 		}
 	}
 	#[inline]
-	pub fn remove_val(&mut self, g: &G) -> Option<(usize, G)> {
+	pub fn remove_val<H: CombEq<G>>(&mut self, g: &H) -> Option<(usize, G)> {
 		if let Some(i) = self.keys.remove(g) {
 			let g = self.vals.remove(&i).unwrap();
 			Strategy::on_remove(self, i);
@@ -301,15 +303,15 @@ impl<G: CombEq + Clone, Strategy: IndexStrategy> CombIndex<G, Strategy> {
 #[cfg(any(feature = "rayon", doc))]
 impl<G: CombEq + Clone + Send + Sync, Strategy: IndexStrategy> CombIndex<G, Strategy> {
 	#[inline]
-	pub fn par_contains_val(&self, g: &G) -> bool {
+	pub fn par_contains_val<H: CombEq<G> + Sync>(&self, g: &H) -> bool {
 		self.keys.par_contains_key(g)
 	}
 	#[inline]
-	pub fn par_idx(&self, g: &G) -> Option<usize> {
+	pub fn par_idx<H: CombEq<G> + Sync>(&self, g: &H) -> Option<usize> {
 		self.keys.par_get(g).copied()
 	}
 	#[inline]
-	pub fn par_insert(&mut self, g: G) -> usize {
+	pub fn par_insert<H: CombEq<G> + Into<G> + Sync>(&mut self, g: H) -> usize {
 		match self.keys.par_get(&g) {
 			Some(&i) => { i }
 			None => {
@@ -318,6 +320,7 @@ impl<G: CombEq + Clone + Send + Sync, Strategy: IndexStrategy> CombIndex<G, Stra
 				}
 				let i = self.next;
 				self.next += 1;
+				let g = g.into();
 				self.vals.insert(i, g.clone());
 				self.keys.insert_unchecked(g, i);
 				i
@@ -325,7 +328,7 @@ impl<G: CombEq + Clone + Send + Sync, Strategy: IndexStrategy> CombIndex<G, Stra
 		}
 	}
 	#[inline]
-	pub fn par_remove_val(&mut self, g: &G) -> Option<(usize, G)> {
+	pub fn par_remove_val<H: CombEq<G> + Sync>(&mut self, g: &H) -> Option<(usize, G)> {
 		if let Some(i) = self.keys.par_remove(g) {
 			let g = self.vals.remove(&i).unwrap();
 			Strategy::on_par_remove(self, i);
