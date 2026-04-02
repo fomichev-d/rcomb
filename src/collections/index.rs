@@ -82,10 +82,10 @@ pub struct CombIndex<G: CombEq, Strategy: IndexStrategy = KeepIndex> {
 }
 impl<G: CombEq, Strategy: IndexStrategy> IndexExt<G> for CombIndex<G, Strategy> {
 	fn next_index(&self) -> usize {
-	    self.next
+		self.next
 	}
 	fn set_next_index(&mut self, idx: usize) {
-	    self.next = idx;
+		self.next = idx;
 	}
 	fn reassign(&mut self, src: usize, dst: usize) {
 		let h = self.vals.remove(&src).unwrap();
@@ -368,10 +368,10 @@ pub struct HashIndex<G: Hash + Eq, Strategy: IndexStrategy = KeepIndex> {
 }
 impl<G: Hash + Eq, Strategy: IndexStrategy> IndexExt<G> for HashIndex<G, Strategy> {
 	fn next_index(&self) -> usize {
-	    self.next
+		self.next
 	}
 	fn set_next_index(&mut self, idx: usize) {
-	    self.next = idx;
+		self.next = idx;
 	}
 	fn reassign(&mut self, src: usize, dst: usize) {
 		let h = self.vals.remove(&src).unwrap();

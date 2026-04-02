@@ -74,7 +74,7 @@ pub struct SizedIter<I> {
 impl<I: Iterator> Iterator for SizedIter<I> {
 	type Item = I::Item;
 	fn next(&mut self) -> Option<Self::Item> {
-	    let item = self.iter.next();
+		let item = self.iter.next();
 		self.n_remaining = self.n_remaining.map(|n| n.saturating_sub(1));
 		item
 	}

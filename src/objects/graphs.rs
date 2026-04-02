@@ -41,7 +41,10 @@ impl CombEnum<usize> for UnGraph<(), (), DefaultIx> {
 				.map(|graph6| UnGraph::from_graph6_string(graph6))
 		)
 	}
-	// TODO: count_deg
+	// TODO: implement it properly
+	fn count_deg(degree: usize) -> Option<usize> {
+		Some(Self::iterate_deg_inner(degree).count())
+	}
 }
 
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
