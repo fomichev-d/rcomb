@@ -69,8 +69,8 @@ impl<G: CombEq + Send + Sync> FromParallelIterator<G> for CombSet<G> {
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
-impl<G: CombEq + Send + Sync> ParallelExtend<G> for CombSet<G> {
-	fn par_extend<I: IntoParallelIterator<Item=G>>(&mut self, par_iter: I) {
+impl<G: CombEq + Send + Sync, H: CombEq<G> + Into<G> + Send> ParallelExtend<H> for CombSet<G> {
+	fn par_extend<I: IntoParallelIterator<Item=H>>(&mut self, par_iter: I) {
 		self.0.par_extend(par_iter.into_par_iter().map(|g| (g, ())))
 	}
 }
@@ -101,9 +101,9 @@ impl<'a, G: CombEq + Send + Sync> IntoParallelIterator for &'a mut CombSet<G> {
 		(&mut self.0).into_par_iter().map(|(g, &mut ())| g)
 	}
 }
-impl<G: CombEq> Extend<G> for CombSet<G> {
+impl<G: CombEq, H: CombEq<G> + Into<G>> Extend<H> for CombSet<G> {
 	#[inline]
-	fn extend<I>(&mut self, it: I) where I: IntoIterator<Item=G> {
+	fn extend<I>(&mut self, it: I) where I: IntoIterator<Item=H> {
 		self.0.extend(it.into_iter().map(|g| (g, ())))
 	}
 }
@@ -128,25 +128,25 @@ impl<G: CombEq> CombSet<G> {
 	/// If there are several isomorphic items (e.g. after [`insert_unchecked`](Self::insert_unchecked)), an arbitrary one is picked to be replaced.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn insert(&mut self, g: G) { self.0.insert(g, ()); }
+	pub fn insert<H: CombEq<G> + Into<G>>(&mut self, g: H) { self.0.insert(g, ()); }
 	/// Inserts an item into the set, assuming it is not isomorphic to any present ones.
 	///
 	/// If the set did have an isomorphic item present, it will now store several isomorphic items.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn insert_unchecked(&mut self, g: G) { self.0.insert_unchecked(g, ()) }
+	pub fn insert_unchecked<H: CombEq<G> + Into<G>>(&mut self, g: H) { self.0.insert_unchecked(g, ()) }
 	/// Removes an item from the set.
 	///
 	/// If there are several isomorphic items (e.g. after [`insert_unchecked`](Self::insert_unchecked)), an arbitrary one is picked.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn remove(&mut self, g: &G) { self.0.remove(g); }
+	pub fn remove<H: CombEq<G>>(&mut self, g: &H) { self.0.remove(g); }
 	/// Extends the set with the contents of the iterator, assuming the items are not isomorphic to each other or any present ones.
 	///
 	/// If the set or the iterator did have isomorphic items, it will now store several isomorphic items.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn extend_unchecked<I: IntoIterator<Item=G>>(&mut self, it: I) { self.0.extend_unchecked(it.into_iter().map(|g| (g, ()))) }
+	pub fn extend_unchecked<H: CombEq<G> + Into<G>, I: IntoIterator<Item=H>>(&mut self, it: I) { self.0.extend_unchecked(it.into_iter().map(|g| (g, ()))) }
 	/// Retains only the elements specified by the predicate.
 	///
 	/// In other words, remove items `g` for which `f(&g)` returns `false`.
@@ -159,7 +159,7 @@ impl<G: CombEq> CombSet<G> {
 	pub fn dedup(&mut self) { self.0.dedup() }
 	/// Returns `true` if the set contains an isomorphic item.
 	#[inline]
-	pub fn contains(&self, g: &G) -> bool { self.0.contains_key(g) }
+	pub fn contains<H: CombEq<G>>(&self, g: &H) -> bool { self.0.contains_key(g) }
 	/// An iterator visiting all items in arbitrary order.
 	/// The iterator element type is `&'a G`.
 	#[inline]
@@ -178,21 +178,21 @@ impl<G: CombEq> CombSet<G> {
 #[cfg(feature = "rayon")]
 impl<G: CombEq + Send + Sync> CombSet<G> {
 	#[inline]
-	pub fn par_insert(&mut self, g: G) {
+	pub fn par_insert<H: CombEq<G> + Into<G> + Sync>(&mut self, g: H) {
 		self.0.par_insert(g, ());
 	}
 	#[inline]
-	pub fn par_remove(&mut self, g: &G) {
+	pub fn par_remove<H: CombEq<G> + Sync>(&mut self, g: &H) {
 		self.0.par_remove(g);
 	}
 	#[inline]
-	pub fn par_extend_unchecked<I: IntoParallelIterator<Item=G>>(&mut self, par_iter: I) {
+	pub fn par_extend_unchecked<H: CombEq<G> + Into<G> + Send, I: IntoParallelIterator<Item=H>>(&mut self, par_iter: I) {
 		self.0.par_extend_unchecked(par_iter.into_par_iter().map(|g| (g, ())));
 	}
 	#[inline]
 	pub fn par_retain<F: Fn(&G) -> bool + Copy + Sync>(&mut self, f: F) { self.0.par_retain(|g, ()| f(g)) }
 	#[inline]
-	pub fn par_contains(&self, g: &G) -> bool { self.0.par_contains_key(g) }
+	pub fn par_contains<H: CombEq<G> + Sync>(&self, g: &H) -> bool { self.0.par_contains_key(g) }
 	#[inline]
 	pub fn par_dedup(&mut self) { self.0.par_dedup() }
 	#[inline]

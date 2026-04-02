@@ -39,9 +39,9 @@ pub mod io {
 
 // core traits
 
-pub trait CombEq {
+pub trait CombEq<G = Self> {
 	fn hash(&self) -> Vec<usize>;
-	fn is_isomorphic(&self, other: &Self) -> bool;
+	fn is_isomorphic(&self, other: &G) -> bool;
 }
 
 pub trait CombGrad<T: Copy + Eq + Ord + Send + Sync = usize> {
@@ -50,15 +50,26 @@ pub trait CombGrad<T: Copy + Eq + Ord + Send + Sync = usize> {
 
 pub trait CombEnum<T: Copy + Eq + Ord + Send + Sync>: CombGrad<T> {
 	type Iter: Iterator<Item=Self>;
-	fn iterate_deg(degree: T) -> Self::Iter;
+	fn iterate_deg_inner(degree: T) -> Self::Iter;
+
+	fn iterate_deg(degree: T) -> SizedIter<Self::Iter> {
+		SizedIter {
+			iter: Self::iterate_deg_inner(degree),
+			n_remaining: Self::count_deg(degree)
+		}
+	}
+	fn collect_deg(degree: T) -> Vec<Self> where Self: Sized {
+		Self::iterate_deg_inner(degree).collect()
+	}
 	fn count_deg(degree: T) -> Option<usize> {
-		Self::iterate_deg(degree).size_hint().1
+		Self::iterate_deg_inner(degree).size_hint().1
 	}
 }
 
 pub trait CombCan: Sized + Eq {
 	type Input;
 	#[allow(unused_variables)]
+	#[inline]
 	fn validate(input: &Self::Input) -> bool { true }
 	fn canonicalise(input: &mut Self::Input);
 	unsafe fn from_raw(input: Self::Input) -> Self;

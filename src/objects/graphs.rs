@@ -1,6 +1,11 @@
 use crate::*;
 use crate::io::*;
 
+#[cfg(feature = "geng")]
+use std::io::{BufReader, BufRead};
+
+#[cfg(feature = "geng")]
+use petgraph::graph::DefaultIx;
 use petgraph::graph::{UnGraph, IndexType};
 use petgraph::graph6::*;
 use petgraph::visit::GetAdjacencyMatrix;
@@ -11,6 +16,32 @@ use itertools::*;
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<N, E, Ix: IndexType> CombGrad<usize> for UnGraph<N, E, Ix> {
 	fn degree(&self) -> usize { self.node_count() }
+}
+
+// TODO: make a separate implementation
+#[cfg_attr(docsrs, doc(cfg(all(feature = "petgraph", feature = "geng"))))]
+#[cfg(feature = "geng")]
+impl CombEnum<usize> for UnGraph<(), (), DefaultIx> {
+	type Iter = Box<dyn Iterator<Item=UnGraph<(), (), DefaultIx>> + Sync + Send>;
+	fn iterate_deg_inner(degree: usize) -> Self::Iter {
+		if degree == 0 { return Box::new(std::iter::once(UnGraph::default())); }
+		let stdout = std::process::Command::new("geng")
+			.arg("-q")
+			.arg(format!("{}", degree))
+			.stdout(std::process::Stdio::piped())
+			.spawn()
+			.expect("geng failed")
+			.stdout
+			.expect("geng failed");
+		Box::new(
+			BufReader::new(stdout)
+				.lines()
+				.filter_map(|l| l.ok())
+				.filter(|l| l.len() > 0)
+				.map(|graph6| UnGraph::from_graph6_string(graph6))
+		)
+	}
+	// TODO: count_deg
 }
 
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]

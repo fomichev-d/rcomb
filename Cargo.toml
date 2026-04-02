@@ -1,6 +1,6 @@
 [package]
 name = "rcomb"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 keywords = ["combinatorics", "mathematics"]
@@ -15,6 +15,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 rayon = ["dep:rayon", "dep:uf_rush"]
+geng = []
 
 [dependencies]
 rayon = { version = "1.11.0", optional = true }
@@ -32,4 +33,9 @@ criterion = "0.8.2"
 
 [[bench]]
 name = "map"
+harness = false
+
+[[bench]]
+name = "geng"
+required-features = ["petgraph", "geng"]
 harness = false

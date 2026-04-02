@@ -66,6 +66,27 @@ pub fn par_dedup<T: Sync, F: Fn(&T, &T) -> bool + Sync>(data: &mut Vec<T>, eq: F
 
 pub trait Sealed {}
 
+#[derive(Clone, Debug)]
+pub struct SizedIter<I> {
+	pub iter: I,
+	pub n_remaining: Option<usize>
+}
+impl<I: Iterator> Iterator for SizedIter<I> {
+	type Item = I::Item;
+	fn next(&mut self) -> Option<Self::Item> {
+	    let item = self.iter.next();
+		self.n_remaining = self.n_remaining.map(|n| n.saturating_sub(1));
+		item
+	}
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		if let Some(n) = self.n_remaining {
+			(n, Some(n))
+		} else {
+			(0, None)
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

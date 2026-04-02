@@ -63,9 +63,9 @@ impl<G: CombEq, T> FromIterator<(G, T)> for CombMap<G, T> {
 		map
 	}
 }
-impl<G: CombEq, T> Extend<(G, T)> for CombMap<G, T> {
+impl<G: CombEq, H: CombEq<G> + Into<G>, T> Extend<(H, T)> for CombMap<G, T> {
 	#[inline]
-	fn extend<I>(&mut self, it: I) where I: IntoIterator<Item=(G, T)> {
+	fn extend<I>(&mut self, it: I) where I: IntoIterator<Item=(H, T)> {
 		for (g, val) in it {
 			self.insert(g, val);
 		}
@@ -124,14 +124,14 @@ impl<G: CombEq + Send + Sync, T: Send + Sync> FromParallelIterator<(G, T)> for C
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
-impl<G: CombEq + Send + Sync, T: Send + Sync> ParallelExtend<(G, T)> for CombMap<G, T> {
-	fn par_extend<I: IntoParallelIterator<Item=(G, T)>>(&mut self, par_iter: I) {
+impl<G: CombEq + Send + Sync, H: CombEq<G> + Into<G> + Send, T: Send + Sync> ParallelExtend<(H, T)> for CombMap<G, T> {
+	fn par_extend<I: IntoParallelIterator<Item=(H, T)>>(&mut self, par_iter: I) {
 		let buckets = par_iter.into_par_iter()
 			.map(|(g, val)| (g.hash(), g, val))
 			.fold(
 				|| HashMap::<Vec<usize>, Vec<(G, T)>>::new(),
 				|mut map, (key, g, val)| {
-					map.entry(key).or_default().push((g, val));
+					map.entry(key).or_default().push((g.into(), val));
 					map
 				}
 			)
@@ -230,7 +230,7 @@ impl<G: CombEq, T> CombMap<G, T> {
 	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](Self::insert_unchecked)), an arbitrary one is picked to be replaced.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn insert(&mut self, g: G, val: T) -> Option<T> {
+	pub fn insert<H: CombEq<G> + Into<G>>(&mut self, g: H, val: T) -> Option<T> {
 		let key = g.hash();
 		let bucket = self.buckets.entry(key).or_default();
 		match bucket.iter().position(|(g_other, _)| g.is_isomorphic(g_other)) {
@@ -238,7 +238,7 @@ impl<G: CombEq, T> CombMap<G, T> {
 				Some(std::mem::replace(&mut bucket[i].1, val))
 			}
 			None => {
-				bucket.push((g, val));
+				bucket.push((g.into(), val));
 				None
 			}
 		}
@@ -248,21 +248,21 @@ impl<G: CombEq, T> CombMap<G, T> {
 	/// If the map did have an isomorphic key present, it will now store several entries with isomorphic keys.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn insert_unchecked(&mut self, g: G, val: T) {
+	pub fn insert_unchecked<H: CombEq<G> + Into<G>>(&mut self, g: H, val: T) {
 		let key = g.hash();
 		let bucket = self.buckets.entry(key).or_default();
-		bucket.push((g, val));
+		bucket.push((g.into(), val));
 	}
 	/// Removes a key from the map, returning the value at the key if an isomorphic key was previously in the map.
 	///
 	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](Self::insert_unchecked)), an arbitrary one is picked.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn remove(&mut self, g: &G) -> Option<T> {
+	pub fn remove<H: CombEq<G>>(&mut self, g: &H) -> Option<T> {
 		let key = g.hash();
 		match self.buckets.get_mut(&key) {
 			Some(bucket) => {
-				if let Some(i) = bucket.iter().position(|(g_other, _)| g_other.is_isomorphic(g)) {
+				if let Some(i) = bucket.iter().position(|(g_other, _)| g.is_isomorphic(g_other)) {
 					let (_, val) = bucket.swap_remove(i);
 					if bucket.is_empty() {
 						self.buckets.remove(&key);
@@ -280,7 +280,7 @@ impl<G: CombEq, T> CombMap<G, T> {
 	/// If the map or the iterator did have isomorphic keys, it will now store several entries with isomorphic keys.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn extend_unchecked<I: IntoIterator<Item=(G, T)>>(&mut self, it: I) {
+	pub fn extend_unchecked<H: CombEq<G> + Into<G>, I: IntoIterator<Item=(H, T)>>(&mut self, it: I) {
 		for (g, val) in it {
 			self.insert_unchecked(g, val);
 		}
@@ -314,12 +314,12 @@ impl<G: CombEq, T> CombMap<G, T> {
 	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](Self::insert_unchecked)), an arbitrary one is picked.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn get(&self, g: &G) -> Option<&T> {
+	pub fn get<H: CombEq<G>>(&self, g: &H) -> Option<&T> {
 		let key = g.hash();
 		match self.buckets.get(&key) {
 			Some(bucket) => {
 				for (g_other, val) in bucket.iter() {
-					if g_other.is_isomorphic(g) {
+					if g.is_isomorphic(g_other) {
 						return Some(val);
 					}
 				}
@@ -333,12 +333,12 @@ impl<G: CombEq, T> CombMap<G, T> {
 	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](Self::insert_unchecked)), an arbitrary one is picked.
 	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
 	#[inline]
-	pub fn get_mut(&mut self, g: &G) -> Option<&mut T> {
+	pub fn get_mut<H: CombEq<G>>(&mut self, g: &H) -> Option<&mut T> {
 		let key = g.hash();
 		match self.buckets.get_mut(&key) {
 			Some(bucket) => {
 				for (g_other, val) in bucket.iter_mut() {
-					if g_other.is_isomorphic(g) {
+					if g.is_isomorphic(g_other) {
 						return Some(val);
 					}
 				}
@@ -349,7 +349,7 @@ impl<G: CombEq, T> CombMap<G, T> {
 	}
 	/// Returns `true` if the map contains a value for the specified key.
 	#[inline]
-	pub fn contains_key(&self, g: &G) -> bool {
+	pub fn contains_key<H: CombEq<G>>(&self, g: &H) -> bool {
 		self.get(g).is_some()
 	}
 	/// An iterator visiting all key-value pairs in arbitrary order.
@@ -482,7 +482,7 @@ impl<G: CombEq, T> CombMap<G, T> {
 #[cfg(feature = "rayon")]
 impl<G: CombEq + Send + Sync, T: Send + Sync> CombMap<G, T> {
 	#[inline]
-	pub fn par_insert(&mut self, g: G, val: T) -> Option<T> {
+	pub fn par_insert<H: CombEq<G> + Into<G> + Sync>(&mut self, g: H, val: T) -> Option<T> {
 		let key = g.hash();
 		if self.buckets.get(&key).is_none() {
 			self.buckets.insert(key.clone(), vec![]);
@@ -493,17 +493,17 @@ impl<G: CombEq + Send + Sync, T: Send + Sync> CombMap<G, T> {
 				Some(std::mem::replace(&mut bucket[i].1, val))
 			}
 			None => {
-				bucket.push((g, val));
+				bucket.push((g.into(), val));
 				None
 			}
 		}
 	}
 	#[inline]
-	pub fn par_remove(&mut self, g: &G) -> Option<T> {
+	pub fn par_remove<H: CombEq<G> + Sync>(&mut self, g: &H) -> Option<T> {
 		let key = g.hash();
 		match self.buckets.get_mut(&key) {
 			Some(bucket) => {
-				if let Some(i) = bucket.par_iter().position_any(|(g_other, _)| g_other.is_isomorphic(g)) {
+				if let Some(i) = bucket.par_iter().position_any(|(g_other, _)| g.is_isomorphic(g_other)) {
 					let (_, val) = bucket.swap_remove(i);
 					if bucket.is_empty() {
 						self.buckets.remove(&key);
@@ -516,13 +516,13 @@ impl<G: CombEq + Send + Sync, T: Send + Sync> CombMap<G, T> {
 			None => None
 		}
 	}
-	pub fn par_extend_unchecked<I: IntoParallelIterator<Item=(G, T)>>(&mut self, par_iter: I) {
+	pub fn par_extend_unchecked<H: CombEq<G> + Into<G> + Send, I: IntoParallelIterator<Item=(H, T)>>(&mut self, par_iter: I) {
 		let buckets = par_iter.into_par_iter()
 			.map(|(g, val)| (g.hash(), g, val))
 			.fold(
 				|| HashMap::<Vec<usize>, Vec<(G, T)>>::new(),
 				|mut map, (hash, g, val)| {
-					map.entry(hash).or_default().push((g, val));
+					map.entry(hash).or_default().push((g.into(), val));
 					map
 				}
 			)
@@ -551,31 +551,31 @@ impl<G: CombEq + Send + Sync, T: Send + Sync> CombMap<G, T> {
 		});
 	}
 	#[inline]
-	pub fn par_get(&self, g: &G) -> Option<&T> {
+	pub fn par_get<H: CombEq<G> + Sync>(&self, g: &H) -> Option<&T> {
 		let key = g.hash();
 		match self.buckets.get(&key) {
 			Some(bucket) => {
 				bucket.par_iter()
-					.find_any(|(g_other, _)| g_other.is_isomorphic(g))
+					.find_any(|(g_other, _)| g.is_isomorphic(g_other))
 					.map(|(_, val)| val)
 			}
 			None => { None }
 		}
 	}
 	#[inline]
-	pub fn par_get_mut(&mut self, g: &G) -> Option<&mut T> {
+	pub fn par_get_mut<H: CombEq<G> + Sync>(&mut self, g: &H) -> Option<&mut T> {
 		let key = g.hash();
 		match self.buckets.get_mut(&key) {
 			Some(bucket) => {
 				bucket.par_iter_mut()
-					.find_any(|(g_other, _)| g_other.is_isomorphic(g))
+					.find_any(|(g_other, _)| g.is_isomorphic(g_other))
 					.map(|(_, val)| val)
 			}
 			None => { None }
 		}
 	}
 	#[inline]
-	pub fn par_contains_key(&self, g: &G) -> bool {
+	pub fn par_contains_key<H: CombEq<G> + Sync>(&self, g: &H) -> bool {
 		self.par_get(g).is_some()
 	}
 	#[inline]

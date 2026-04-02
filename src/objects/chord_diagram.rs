@@ -52,7 +52,7 @@ impl CombGrad<usize> for ChordDiagram {
 }
 impl CombEnum<usize> for ChordDiagram {
 	type Iter = ChordDiagramIterator;
-	fn iterate_deg(degree: usize) -> Self::Iter {
+	fn iterate_deg_inner(degree: usize) -> Self::Iter {
 		ChordDiagramIterator::new(degree)
 	}
 }
