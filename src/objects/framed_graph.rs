@@ -61,7 +61,7 @@ impl Display for FGraph {
 			if i > 0 {
 				write!(f, ", ")?;
 			}
-			write!(f, "{}", self.vertex(v).unwrap())?;
+			write!(f, "{}", self[v])?;
 		}
 		write!(f, "] [")?;
 		for (i, e) in self.edges().enumerate() {

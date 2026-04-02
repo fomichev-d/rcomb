@@ -4,17 +4,22 @@ use crate::io::*;
 use std::fmt::Display;
 #[cfg(feature = "geng")]
 use std::io::{BufReader, BufRead};
+use std::ops::{Index, IndexMut};
 
 use petgraph::graph::{EdgeIndex, EdgeReference, EdgeReferences, Neighbors, NodeIndex, NodeIndices, UnGraph};
 use petgraph::graph6::*;
+use petgraph::prelude::StableUnGraph;
 use petgraph::visit::{EdgeRef, GetAdjacencyMatrix};
 use itertools::*;
 
 // petgraph integration
 
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Graph<V = (), E = ()>(pub(crate) UnGraph<V, E>);
+impl<V, E> Default for Graph<V, E> {
+	fn default() -> Self { Self(UnGraph::default()) }
+}
 
 impl<V, E> From<UnGraph<V, E>> for Graph<V, E> {
 	fn from(value: UnGraph<V, E>) -> Self { Self(value.into()) }
@@ -34,6 +39,36 @@ impl ToGraph6 for Graph {
 impl<V, E> From<Graph<V, E>> for UnGraph<V, E> {
 	fn from(value: Graph<V, E>) -> Self {
 		value.0
+	}
+}
+impl<V, E> From<Graph<V, E>> for StableUnGraph<V, E> {
+	fn from(value: Graph<V, E>) -> Self {
+		Self::from(value.0)
+	}
+}
+
+impl<V, E> Index<NodeIndex> for Graph<V, E> {
+	type Output = V;
+	fn index(&self, index: NodeIndex) -> &Self::Output {
+		self.0.node_weight(index).expect("vertex not found")
+	}
+}
+impl<V, E> IndexMut<NodeIndex> for Graph<V, E> {
+	fn index_mut(&mut self, index: NodeIndex) -> &mut Self::Output {
+		self.0.node_weight_mut(index).expect("vertex not found")
+	}
+}
+impl<V, E> Index<(NodeIndex, NodeIndex)> for Graph<V, E> {
+	type Output = E;
+	fn index(&self, index: (NodeIndex, NodeIndex)) -> &Self::Output {
+		let idx = self.0.find_edge(index.0, index.1);
+		idx.map(|e| &self.0[e]).expect("edge not found")
+	}
+}
+impl<V, E> IndexMut<(NodeIndex, NodeIndex)> for Graph<V, E> {
+	fn index_mut(&mut self, index: (NodeIndex, NodeIndex)) -> &mut Self::Output {
+		let idx = self.0.find_edge(index.0, index.1);
+		idx.map(|e| &mut self.0[e]).expect("edge not found")
 	}
 }
 
@@ -65,15 +100,7 @@ impl<V, E> Graph<V, E> {
 		self.0.remove_node(u)
 	}
 	#[inline]
-	pub fn vertex(&self, u: NodeIndex) -> Option<&V> {
-		self.0.node_weight(u)
-	}
-	#[inline]
-	pub fn vertex_mut(&mut self, u: NodeIndex) -> Option<&mut V> {
-		self.0.node_weight_mut(u)
-	}
-	#[inline]
-	pub fn degree(&self, v: NodeIndex) -> usize {
+	pub fn vertex_degree(&self, v: NodeIndex) -> usize {
 		self.0.neighbors(v).count()
 	}
 	#[inline]
@@ -86,18 +113,17 @@ impl<V, E> Graph<V, E> {
 		idx.map(|e| self.0.remove_edge(e)).flatten()
 	}
 	#[inline]
-	pub fn edge(&self, u: NodeIndex, v: NodeIndex) -> Option<&E> {
-		let idx = self.0.find_edge(u, v);
-		idx.map(|e| &self.0[e])
-	}
-	#[inline]
-	pub fn edge_mut(&mut self, u: NodeIndex, v: NodeIndex) -> Option<&mut E> {
-		let idx = self.0.find_edge(u, v);
-		idx.map(|e| &mut self.0[e])
-	}
-	#[inline]
 	pub fn has_edge(&self, u: NodeIndex, v: NodeIndex) -> bool {
 		self.0.find_edge(u, v).is_some()
+	}
+	#[inline]
+	pub fn map<
+		V2,
+		E2,
+		F: FnMut(NodeIndex, &V) -> V2,
+		G: FnMut(EdgeIndex, &E) -> E2
+	>(&self, vertex_map: F, edge_map: G) -> Graph<V2, E2> {
+		Graph(self.0.map(vertex_map, edge_map))
 	}
 	#[inline]
 	pub fn filter_map<
