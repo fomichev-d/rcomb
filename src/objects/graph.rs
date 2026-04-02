@@ -22,7 +22,10 @@ impl<V, E> Default for Graph<V, E> {
 }
 
 impl<V, E> From<UnGraph<V, E>> for Graph<V, E> {
-	fn from(value: UnGraph<V, E>) -> Self { Self(value.into()) }
+	fn from(value: UnGraph<V, E>) -> Self { Self(value) }
+}
+impl<V, E> From<StableUnGraph<V, E>> for Graph<V, E> {
+	fn from(value: StableUnGraph<V, E>) -> Self { Self(value.into()) }
 }
 impl FromGraph6 for Graph {
 	#[inline]
@@ -168,6 +171,9 @@ impl<V, E> Graph<V, E> {
 			comps.push(h);
 		});
 		comps
+	}
+	pub fn connected_component_number(&self) -> usize {
+		petgraph::algo::connected_components(&self.0)
 	}
 	// TODO: make it a concrete type with automatic Send+Sync?
 	pub fn edge_subgraphs(&self) -> impl Iterator<Item=Self> + Send + Sync where V: Clone + Send + Sync, E: Clone + Send + Sync {
