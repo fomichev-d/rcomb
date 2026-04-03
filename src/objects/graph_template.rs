@@ -113,11 +113,17 @@ impl FromStr for GraphTemplate {
 }
 
 impl GraphTemplate {
-	pub fn new(g: Graph, mapping: &[GraphTemplateVertex]) -> Self {
-		g.map(
-			|v, _| { mapping[v.index()] },
-			|_, _| {}
-		)
+	pub fn new(nodes: &[GraphTemplateVertex], edges: &[(usize, usize)]) -> Self {
+		let mut node_map: Vec<NodeIndex> = vec![];
+		let mut graph = Graph::<GraphTemplateVertex>::default();
+		for i in 0..nodes.len() {
+			node_map.push(graph.add_vertex_with(nodes[i]));
+		}
+		for &(u_i, v_i) in edges {
+			let (u, v) = (node_map[u_i], node_map[v_i]);
+			graph.add_edge(u, v);
+		}
+		graph
 	}
 
 	pub fn free_verts(&self) -> impl Iterator<Item=NodeIndex> + Send + Sync {
@@ -315,7 +321,10 @@ impl CombEnum<GraphTemplateLimits> for GraphTemplate {
 							.map({
 								let g = g.clone();
 								move |mapping| {
-									GraphTemplate::new(g.clone(), mapping.as_slice())
+									g.map(
+										|v, _| { mapping[v.index()] },
+										|_, _| {}
+									)
 								}
 							})
 							.collect::<Vec<_>>()
@@ -327,7 +336,12 @@ impl CombEnum<GraphTemplateLimits> for GraphTemplate {
 								acc[v.index()] = GraphTemplateVertex::Group(gr_i as u8);
 								acc
 							});
-						vec![GraphTemplate::new(g.clone(), mapping.as_slice())].into_iter()
+						vec![
+							g.map(
+								|v, _| { mapping[v.index()] },
+								|_, _| {}
+							)
+						].into_iter()
 					}
 				});
 				#[cfg(feature = "rayon")]

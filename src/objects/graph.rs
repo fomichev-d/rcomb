@@ -6,7 +6,7 @@ use std::fmt::Display;
 use std::io::{BufReader, BufRead};
 use std::ops::{Index, IndexMut};
 
-use petgraph::graph::{EdgeIndex, EdgeReference, EdgeReferences, Neighbors, NodeIndex, NodeReferences, UnGraph};
+use petgraph::graph::{EdgeIndex, EdgeReference, EdgeReferences, Neighbors, NodeIndex, NodeReferences, UnGraph, IndexType};
 use petgraph::graph6::*;
 use petgraph::prelude::StableUnGraph;
 use petgraph::visit::{EdgeRef, GetAdjacencyMatrix, IntoNodeReferences};
@@ -257,22 +257,53 @@ pub trait GraphHash {
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<V, E> GraphHash for Graph<V, E> {
 	fn graph_hash(&self) -> Vec<usize> {
-		let n = self.num_verts();
+		self.0.graph_hash()
+	}
+}
+impl<V, E, Ix: IndexType> GraphHash for UnGraph<V, E, Ix> {
+	fn graph_hash(&self) -> Vec<usize> {
+		let n = self.node_count();
 		let mut data = vec![0; n + (n + 1) * 1];
 		// first n entries: #verts with i neighbours
-		let adj = self.0.adjacency_matrix();
-		for v in self.0.node_indices() {
-			let deg = self.0.node_indices()
-				.filter(|&u| self.0.is_adjacent(&adj, v, u))
+		let adj = self.adjacency_matrix();
+		for v in self.node_indices() {
+			let deg = self.node_indices()
+				.filter(|&u| self.is_adjacent(&adj, v, u))
 				.count();
 			data[deg] += 1;
 		}
 		// second n+1 entries: #verts with i 2-neighbours
 		let adj_ref = &adj;
-		for v in self.0.node_indices() {
-			let deg2 = self.0.node_indices()
-				.filter(|&u| self.0.is_adjacent(&adj, v, u))
-				.flat_map(|u| self.0.node_indices().filter(move |&w| self.0.is_adjacent(adj_ref, w, u)))
+		for v in self.node_indices() {
+			let deg2 = self.node_indices()
+				.filter(|&u| self.is_adjacent(&adj, v, u))
+				.flat_map(|u| self.node_indices().filter(move |&w| self.is_adjacent(adj_ref, w, u)))
+				.sorted()
+				.dedup()
+				.count();
+			data[n + deg2] += 1;
+		}
+		data
+	}
+}
+impl<V, E, Ix: IndexType> GraphHash for StableUnGraph<V, E, Ix> {
+	fn graph_hash(&self) -> Vec<usize> {
+		let n = self.node_count();
+		let mut data = vec![0; n + (n + 1) * 1];
+		// first n entries: #verts with i neighbours
+		let adj = self.adjacency_matrix();
+		for v in self.node_indices() {
+			let deg = self.node_indices()
+				.filter(|&u| self.is_adjacent(&adj, v, u))
+				.count();
+			data[deg] += 1;
+		}
+		// second n+1 entries: #verts with i 2-neighbours
+		let adj_ref = &adj;
+		for v in self.node_indices() {
+			let deg2 = self.node_indices()
+				.filter(|&u| self.is_adjacent(&adj, v, u))
+				.flat_map(|u| self.node_indices().filter(move |&w| self.is_adjacent(adj_ref, w, u)))
 				.sorted()
 				.dedup()
 				.count();
@@ -297,6 +328,15 @@ impl CombEq for Graph {
 		petgraph::algo::is_isomorphic(&self.0, &other.0)
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
+impl<Ix: IndexType> CombEq<Graph> for UnGraph<(), (), Ix> {
+	fn hash(&self) -> Vec<usize> {
+	    self.graph_hash()
+	}
+	fn is_isomorphic(&self, other: &Graph) -> bool {
+		petgraph::algo::is_isomorphic(&self, &other.0)
+	}
+}
 
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<N: NodeMatch> CombEq for Graph<N, ()> {
@@ -305,6 +345,15 @@ impl<N: NodeMatch> CombEq for Graph<N, ()> {
 	}
 	fn is_isomorphic(&self, other: &Self) -> bool {
 		petgraph::algo::is_isomorphic_matching(&self.0, &other.0, |v1, v2| { v1 == v2 }, |_, _| { true })
+	}
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
+impl<N: NodeMatch, Ix: IndexType> CombEq<Graph<N, ()>> for UnGraph<N, (), Ix> {
+	fn hash(&self) -> Vec<usize> {
+	    self.graph_hash()
+	}
+	fn is_isomorphic(&self, other: &Graph<N, ()>) -> bool {
+		petgraph::algo::is_isomorphic_matching(&self, &other.0, |v1, v2| { v1 == v2 }, |_, _| { true })
 	}
 }
 
@@ -317,6 +366,15 @@ impl<E: EdgeMatch> CombEq for Graph<(), E> {
 		petgraph::algo::is_isomorphic_matching(&self.0, &other.0, |_, _| { true }, |e1, e2| { e1 == e2 })
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
+impl<E: EdgeMatch, Ix: IndexType> CombEq<Graph<(), E>> for UnGraph<(), E, Ix> {
+	fn hash(&self) -> Vec<usize> {
+	    self.graph_hash()
+	}
+	fn is_isomorphic(&self, other: &Graph<(), E>) -> bool {
+		petgraph::algo::is_isomorphic_matching(&self, &other.0, |_, _| { true }, |e1, e2| { e1 == e2 })
+	}
+}
 
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<N: NodeMatch, E: EdgeMatch> CombEq for Graph<N, E> {
@@ -325,6 +383,15 @@ impl<N: NodeMatch, E: EdgeMatch> CombEq for Graph<N, E> {
 	}
 	fn is_isomorphic(&self, other: &Self) -> bool {
 		petgraph::algo::is_isomorphic_matching(&self.0, &other.0, |v1, v2| { v1 == v2 }, |e1, e2| { e1 == e2 })
+	}
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
+impl<N: NodeMatch, E: EdgeMatch, Ix: IndexType> CombEq<Graph<N, E>> for UnGraph<N, E, Ix> {
+	fn hash(&self) -> Vec<usize> {
+	    self.graph_hash()
+	}
+	fn is_isomorphic(&self, other: &Graph<N, E>) -> bool {
+		petgraph::algo::is_isomorphic_matching(&self, &other.0, |v1, v2| { v1 == v2 }, |e1, e2| { e1 == e2 })
 	}
 }
 
