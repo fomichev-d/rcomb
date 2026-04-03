@@ -6,10 +6,10 @@ use std::fmt::Display;
 use std::io::{BufReader, BufRead};
 use std::ops::{Index, IndexMut};
 
-use petgraph::graph::{EdgeIndex, EdgeReference, EdgeReferences, Neighbors, NodeIndex, NodeIndices, UnGraph};
+use petgraph::graph::{EdgeIndex, EdgeReference, EdgeReferences, Neighbors, NodeIndex, NodeReferences, UnGraph};
 use petgraph::graph6::*;
 use petgraph::prelude::StableUnGraph;
-use petgraph::visit::{EdgeRef, GetAdjacencyMatrix};
+use petgraph::visit::{EdgeRef, GetAdjacencyMatrix, IntoNodeReferences};
 use itertools::*;
 
 // petgraph integration
@@ -82,8 +82,8 @@ impl<V, E> Graph<V, E> {
 	#[inline]
 	pub fn num_edges(&self) -> usize { self.0.edge_count() }
 	#[inline]
-	pub fn vertices(&self) -> NodeIndices {
-		self.0.node_indices()
+	pub fn vertices(&self) -> NodeReferences<'_, V> {
+		self.0.node_references()
 	}
 	#[inline]
 	pub fn neighbours(&self, v: NodeIndex) -> Neighbors<'_, E> {

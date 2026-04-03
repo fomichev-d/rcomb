@@ -37,9 +37,9 @@ pub trait IndexStrategy: Sized + Sync + Sealed {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct KeepIndex;
-impl Sealed for KeepIndex {}
-impl IndexStrategy for KeepIndex {
+pub struct KeepIndexStrategy;
+impl Sealed for KeepIndexStrategy {}
+impl IndexStrategy for KeepIndexStrategy {
 	#[allow(private_bounds)]
 	fn on_remove<G, Index: IndexExt<G>>(_index: &mut Index, _i: usize) {}
 	#[allow(private_bounds)]
@@ -48,9 +48,9 @@ impl IndexStrategy for KeepIndex {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct ReuseIndex;
-impl Sealed for ReuseIndex {}
-impl IndexStrategy for ReuseIndex {
+pub struct ReuseIndexStrategy;
+impl Sealed for ReuseIndexStrategy {}
+impl IndexStrategy for ReuseIndexStrategy {
 	#[allow(private_bounds)]
 	fn on_remove<G, Index: IndexExt<G>>(index: &mut Index, i: usize) {
 		let j = index.next_index() - 1;
@@ -74,7 +74,7 @@ impl IndexStrategy for ReuseIndex {
 
 #[allow(private_bounds)]
 #[derive(Clone)]
-pub struct CombIndex<G: CombEq, Strategy: IndexStrategy = KeepIndex> {
+pub struct CombIndex<G: CombEq, Strategy: IndexStrategy = KeepIndexStrategy> {
 	keys: CombMap<G, usize>,
 	vals: HashMap<usize, G>,
 	next: usize,
@@ -360,7 +360,7 @@ impl<G: CombEq + Clone + Send + Sync, Strategy: IndexStrategy> CombIndex<G, Stra
 
 #[allow(private_bounds)]
 #[derive(Clone)]
-pub struct HashIndex<G: Hash + Eq, Strategy: IndexStrategy = KeepIndex> {
+pub struct HashIndex<G: Hash + Eq, Strategy: IndexStrategy = KeepIndexStrategy> {
 	keys: HashMap<G, usize>,
 	vals: HashMap<usize, G>,
 	next: usize,

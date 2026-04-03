@@ -1,9 +1,12 @@
+use std::{collections::HashSet, hash::Hash};
+
 use crate::*;
 use crate::collections::map::*;
 use crate::io::*;
 
 #[cfg(feature = "rayon")]
 use rayon::iter::{
+	ParallelBridge,
 	ParallelIterator,
 	IntoParallelIterator,
 	FromParallelIterator,
@@ -214,4 +217,135 @@ impl<G: CombEq + Send + Sync> CombSet<G> {
 	pub fn par_contains<H: CombEq<G> + Sync>(&self, g: &H) -> bool { self.0.par_contains_key(g) }
 	#[inline]
 	pub fn par_dedup(&mut self) { self.0.par_dedup() }
+}
+
+impl<G: Eq + Hash> CollectionCsvExt<G, ()> for HashSet<G> {
+	fn read_csv(config: CsvConfig<G, ()>) -> std::io::Result<Self> where G: CombCsv {
+		#[cfg(feature = "kdam")]
+		use kdam::TqdmIterator;
+
+		let reader = csv::ReaderBuilder::new()
+			.has_headers(config.use_header)
+			.from_path(&config.filename)?;
+		let mut map = Self::new();
+
+		#[allow(unused_mut)]
+		let mut it: Box<dyn Iterator<Item=csv::StringRecord>> = Box::new(reader.into_records()
+			.filter_map(|result| result.ok())
+		);
+		#[cfg(feature = "kdam")]
+		if config.use_tqdm { it = Box::new(it.tqdm()); }
+
+		for (g, _) in it.filter_map(|record| config.read_entry(&record)) {
+			map.insert(g);
+		}
+		Ok(map)
+	}
+	fn save_csv(&self, config: CsvConfig<G, ()>) -> std::io::Result<()> where G: CombCsv {
+		#[cfg(feature = "kdam")]
+		use kdam::TqdmIterator;
+
+		let mut writer = csv::Writer::from_path(&config.filename)?;
+		if config.use_header { writer.write_record(config.write_header())?; }
+
+		#[allow(unused_mut)]
+		let mut it: Box<dyn Iterator<Item=&G>> = Box::new(self.iter());
+
+		#[cfg(feature = "kdam")]
+		if config.use_tqdm {
+			it = Box::new(it.tqdm());
+		}
+
+		for g in it {
+			if let Some(entry) = config.write_entry(g, &()) {
+				writer.write_record(entry)?;
+			}
+		}
+		Ok(())
+	}
+
+	#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+	#[cfg(feature = "rayon")]
+	fn par_read_csv(config: CsvConfig<G, ()>) -> std::io::Result<Self> where G: CombCsv + Send + Sync {
+		#[cfg(feature = "kdam")]
+		use kdam::TqdmIterator;
+
+		let reader = csv::ReaderBuilder::new()
+			.has_headers(config.use_header)
+			.from_path(&config.filename)?;
+		
+		#[allow(unused_mut)]
+		let mut it: Box<dyn Iterator<Item=csv::StringRecord> + Send + Sync> = Box::new(reader.into_records()
+			.filter_map(|result| result.ok())
+		);
+		#[cfg(feature = "kdam")]
+		if config.use_tqdm { it = Box::new(it.tqdm()); }
+
+		let entries: Vec<_> = it.par_bridge()
+			.filter_map(|record| config.read_entry(&record))
+			.map(|(g, _)| g)
+			.collect();
+		let mut map = Self::new();
+		map.par_extend(entries);
+		Ok(map)
+	}
+	#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+	#[cfg(feature = "rayon")]
+	fn save_ord_csv(&self, config: CsvConfig<G, ()>) -> std::io::Result<()> where G: CombCsv + CombEnum<usize> + Send + Sync, G::Iter: Send + Sync {
+		#[cfg(feature = "kdam")]
+		use kdam::TqdmIterator;
+		use rayon::prelude::ParallelSliceMut;
+
+		let max_deg = self.iter()
+			.par_bridge()
+			.map(|g| g.degree())
+			.max()
+			.unwrap_or(0);
+
+		let mut writer = csv::Writer::from_path(&config.filename)?;
+		if config.use_header { writer.write_record(config.write_header())?; }
+
+		for deg in 0..=max_deg {
+			#[allow(unused_mut)]
+			let mut it: Box<dyn Iterator<Item=(usize, G)> + Send + Sync> = Box::new(G::iterate_deg(deg).enumerate());
+			#[cfg(feature = "kdam")]
+			if config.use_tqdm { it = Box::new(it.tqdm()); }
+			let mut entries = it.par_bridge()
+				.filter_map(|(i, g)| config.write_entry(&g, &()).map(|entry| (i, entry)))
+				.collect::<Vec<_>>();
+			entries.par_sort_unstable_by_key(|&(i, _)| i);
+			for (_, entry) in entries {
+				writer.write_record(entry)?;
+			}
+		}
+		Ok(())
+	}
+	#[cfg(not(feature = "rayon"))]
+	fn save_ord_csv(&self, config: CsvConfig<G, ()>) -> std::io::Result<()> where G: CombCsv + CombEnum<usize> {
+		#[cfg(feature = "kdam")]
+		use kdam::TqdmIterator;
+
+		let max_deg = self.iter()
+			.map(|g| g.degree())
+			.max()
+			.unwrap_or(0);
+
+		let mut writer = csv::Writer::from_path(&config.filename)?;
+		if config.use_header { writer.write_record(config.write_header())?; }
+
+		for deg in 0..=max_deg {
+			#[allow(unused_mut)]
+			let mut it: Box<dyn Iterator<Item=(usize, G)>> = Box::new(G::iterate_deg(deg).enumerate());
+			#[cfg(feature = "kdam")]
+			if config.use_tqdm { it = Box::new(it.tqdm()); }
+			let mut entries = it
+				.filter_map(|(i, g)| config.write_entry(&g, &()).map(|entry| (i, entry)))
+				.collect::<Vec<_>>();
+			entries.sort_unstable_by_key(|&(i, _)| i);
+			for (_, entry) in entries {
+				writer.write_record(entry)?;
+			}
+		}
+		Ok(())
+	}
 }

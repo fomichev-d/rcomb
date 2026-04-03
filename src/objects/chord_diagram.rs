@@ -30,7 +30,7 @@ impl FromStr for ChordDiagram {
 		let ends = s.split(" ")
 			.map(|a| a.parse::<u8>().map_err(|_| ()))
 			.collect::<Result<Vec<_>, ()>>()?;
-		Ok(Self { ends })
+		Ok(Self::new(ends))
 	}
 }
 impl CombCsv for ChordDiagram {
@@ -56,6 +56,12 @@ impl CombEnum<usize> for ChordDiagram {
 	type Iter = ChordDiagramIterator;
 	fn iterate_deg_inner(degree: usize) -> Self::Iter {
 		ChordDiagramIterator::new(degree)
+	}
+	fn count_deg(degree: usize) -> Option<usize> {
+		// The result cannot be stored in `u64` for `n >= 19`.
+		// For `usize` < `u64`, the overflow happens even earlier.
+		// We assume `usize` >= `u64`.
+		if degree <= 18 { Some(n_chord_diagrams(degree)) } else { None }
 	}
 }
 impl CombCan for ChordDiagram {
@@ -173,18 +179,13 @@ fn n_chord_diagrams(n: usize) -> usize {
 }
 pub struct ChordDiagramIterator {
 	rooted: Box<dyn Iterator<Item=Vec<u8>> + Sync + Send>,
-	cache: radix_trie::Trie<Vec<u8>, ()>,
-	n_left: Option<usize>
+	cache: radix_trie::Trie<Vec<u8>, ()>
 }
 impl ChordDiagramIterator {
 	fn new(n: usize) -> Self {
 		ChordDiagramIterator {
 			rooted: rooted_chord_diagrams(n),
 			cache: Default::default(),
-			// The result cannot be stored in `u64` for `n >= 19`.
-			// For `usize` < `u64`, the overflow happens even earlier.
-			// We assume `usize` >= `u64`.
-			n_left: if n <= 18 { Some(n_chord_diagrams(n)) } else { None }
 		}
 	}
 }
@@ -192,77 +193,29 @@ impl Iterator for ChordDiagramIterator {
 	type Item = ChordDiagram;
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
-			if self.n_left == Some(0) { return None; }
 			let mut ends = self.rooted.next()?;
 			ChordDiagram::canonicalise(&mut ends);
 			match self.cache.insert(ends.clone(), ()) {
 				Some(()) => {}
 				None => {
-					self.n_left = self.n_left.map(|n_left| n_left - 1);
 					return Some(ChordDiagram { ends });
 				}
 			}
 		}
 	}
-	fn size_hint(&self) -> (usize, Option<usize>) {
-		if let Some(n_left) = self.n_left {
-			(n_left, Some(n_left))
-		} else {
-			(0, None)
-		}
-	}
-}
-
-//#[cfg(any(all(feature = "petgraph", feature = "rayon"), doc))]
-#[cfg_attr(docsrs, doc(cfg(all(feature = "petgraph", feature = "rayon"))))]
-#[cfg(all(feature = "petgraph", feature = "rayon"))]
-pub fn intersection_graphs(size: usize) -> impl Iterator<Item=(Graph, ChordDiagram)> + Sync + Send {
-	use crate::collections::set::*;
-	ChordDiagram::iterate_deg(size)
-		.map(|diag| (diag.intersection_graph(), diag))
-		.filter({
-			let mut graph_set = CombSet::<_>::new();
-			move |(g, _)| {
-				if graph_set.par_contains(g) {
-					false
-				} else {
-					graph_set.insert_unchecked(g.clone());
-					true
-				}
-			}
-		})
-}
-//#[cfg(any(all(feature = "petgraph", not(feature = "rayon")), doc))]
-#[cfg_attr(docsrs, doc(cfg(all(feature = "petgraph", not(feature = "rayon")))))]
-#[cfg(all(feature = "petgraph", not(feature = "rayon")))]
-pub fn intersection_graphs(size: usize) -> impl Iterator<Item=(Graph, ChordDiagram)> {
-	use crate::collections::set::*;
-	ChordDiagram::iterate_deg(size)
-		.map(|diag| (diag.intersection_graph(), diag))
-		.filter({
-			let mut graph_set = CombSet::<_>::new();
-			move |(g, _)| {
-				if graph_set.contains(g) {
-					false
-				} else {
-					graph_set.insert_unchecked(g.clone());
-					true
-				}
-			}
-		})
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
 	#[test]
-	fn test_chord_diagram_iterator() {
+	fn test_iterator_count() {
 		for n in 0..=7 {
 			assert_eq!(ChordDiagram::iterate_deg(n).count(), ChordDiagram::count_deg(n).unwrap());
 		}
 	}
 	#[test]
-	fn test_n_chord_diagrams() {
+	fn test_count_deg() {
 		// OEIS A007769
 		let values = vec![
 			1, 1, 2, 5, 18, 105, 902, 9749, 127072, 1915951,
@@ -272,17 +225,6 @@ mod tests {
 		];
 		for n in 0..values.len() {
 			assert_eq!(ChordDiagram::count_deg(n), Some(values[n]));
-		}
-	}
-	#[cfg(feature = "petgraph")]
-	#[test]
-	fn test_intersection_graphs_iterator() {
-		// OEIS A156809
-		let values = vec![
-			1, 1, 2, 4, 11, 34, 154, 978
-		];
-		for n in 0..values.len() {
-			assert_eq!(intersection_graphs(n).count(), values[n]);
 		}
 	}
 }

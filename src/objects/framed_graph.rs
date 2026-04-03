@@ -57,11 +57,11 @@ pub type FGraph = Graph<Framing>;
 impl Display for FGraph {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{{[")?;
-		for (i, v) in self.vertices().enumerate() {
+		for (i, (_, framing)) in self.vertices().enumerate() {
 			if i > 0 {
 				write!(f, ", ")?;
 			}
-			write!(f, "{}", self[v])?;
+			write!(f, "{}", framing)?;
 		}
 		write!(f, "] [")?;
 		for (i, e) in self.edges().enumerate() {

@@ -23,11 +23,15 @@ pub mod collections {
 }
 
 pub mod objects {
+	pub mod chord_diagram;
 	#[cfg(feature = "petgraph")]
 	pub mod graph;
 	#[cfg(feature = "petgraph")]
+	pub mod intersection_graph;
+	#[cfg(feature = "petgraph")]
 	pub mod framed_graph;
-	pub mod chord_diagram;
+	#[cfg(feature = "petgraph")]
+	pub mod graph_template;
 }
 
 pub mod io {
