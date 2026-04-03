@@ -86,7 +86,9 @@ impl IntersectionGraph {
 		(self.graph, self.diagram)
 	}
 	pub fn graph(&self) -> &Graph { &self.graph }
+	pub fn into_graph(self) -> Graph { self.graph }
 	pub fn diagram(&self) -> &ChordDiagram { &self.diagram }
+	pub fn into_diagram(self) -> ChordDiagram { self.diagram }
 }
 
 #[cfg(test)]

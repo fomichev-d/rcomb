@@ -1,9 +1,15 @@
+use crate::*;
 use crate::objects::graph::*;
+use crate::collections::set::*;
 
-use std::{collections::{HashMap, HashSet}, fmt::Display, str::FromStr};
+use std::collections::{HashMap, HashSet};
+use std::fmt::Display;
+use std::str::FromStr;
 
 use petgraph::{graph::NodeIndex, prelude::StableUnGraph};
 use itertools::Itertools;
+#[cfg(feature = "rayon")]
+use rayon::iter::{ParallelBridge, ParallelIterator};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum GraphTemplateVertex {
@@ -12,7 +18,7 @@ pub enum GraphTemplateVertex {
 }
 impl NodeMatch for GraphTemplateVertex {}
 
-type GraphTemplate = Graph<GraphTemplateVertex>;
+pub type GraphTemplate = Graph<GraphTemplateVertex>;
 
 impl Display for GraphTemplate {
 	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -35,15 +41,21 @@ impl Display for GraphTemplate {
 			format_vertex(v, v_type, f)?;
 			write!(f, ")")
 		}
-		write!(f, "{{{} [", self.num_verts())?;
+		write!(f, "{{ [")?;
+		for (i, (v, &v_type)) in self.vertices().enumerate() {
+			if i > 0 {
+				write!(f, ", ")?;
+			}
+			format_vertex(v, v_type, f)?;
+		}
+		write!(f, "] [")?;
 		for (i, e) in self.edges().enumerate() {
 			if i > 0 {
 				write!(f, ", ")?;
 			}
 			format_edge(self, e, f)?;
 		}
-		write!(f, "]")?;
-		write!(f, "}}")
+		write!(f, "]}}")
 	}
 }
 impl FromStr for GraphTemplate {
@@ -197,5 +209,133 @@ impl GraphTemplate {
 			}
 		}
 		return h;
+	}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GraphTemplateLimits {
+	pub n_vertices: usize,
+	pub n_groups: usize,
+
+	pub permute: bool,
+	pub no_free_components: bool,
+	pub no_vertex_multiplication: bool
+}
+
+impl CombGrad<GraphTemplateLimits> for GraphTemplate {
+	fn degree(&self) -> GraphTemplateLimits {
+		GraphTemplateLimits {
+			n_vertices: self.num_verts(),
+			n_groups: self.groups().len(),
+			// the rest does not matter much
+			permute: true,
+			no_free_components: false,
+			no_vertex_multiplication: false
+		}
+	}
+}
+impl CombEnum<GraphTemplateLimits> for GraphTemplate {
+	type Iter = Box<dyn Iterator<Item=Self> + Send + Sync>;
+	fn iterate_deg_inner(limits: GraphTemplateLimits) -> Self::Iter {
+		Box::new(Graph::iterate_deg(limits.n_vertices)
+			.flat_map(move |g| {
+				let mut gr_iter: Box<dyn Iterator<Item=Vec<NodeIndex>> + Send + Sync> = Box::new(g.vertices()
+					.map(|(v, _)| v)
+					.collect::<Vec<_>>()
+					.into_iter()
+					.combinations(limits.n_groups)
+					.filter({
+						// no edges between group vertices
+						let g = g.clone();
+						move |gr_verts| {
+							gr_verts.iter()
+								.tuple_combinations()
+								.all(|(&u, &v)| !g.has_edge(u, v))
+						}
+					})
+				);
+				if limits.no_free_components {
+					gr_iter = Box::new(gr_iter.filter({
+						// no free connected components
+						let g = g.clone();
+						move |gr_verts| {
+							let mut scc = petgraph::algo::TarjanScc::new();
+							let mut good = true;
+							scc.run(&g.0, |comp: &[NodeIndex]| {
+								if comp.iter().all(|v| !gr_verts.contains(v)) {
+									good = false;
+								}
+							});
+							good
+						}
+					}));
+				}
+				if limits.no_vertex_multiplication {
+					gr_iter = Box::new(gr_iter.filter({
+						// vertex multiplication
+						let g = g.clone();
+						move |gr_verts| {
+							// old indices change after removing a vertex, but it isn't difficult to work around that
+							let last_u = g.vertices().map(|(v, _)| v).max_by_key(|u| *u).unwrap();
+							for (v, _) in g.vertices() {
+								if gr_verts.contains(&v) {
+									continue;
+								}
+								let mut h = g.clone();
+								h.delete_vertex(v);
+								let mut scc = petgraph::algo::TarjanScc::new();
+								let mut good = true;
+								scc.run(&h.0, |comp: &[NodeIndex]| {
+									// recall that `last_u` now actually occupies the index of `v`
+									// if both are the same, we just never encounter the index
+									if comp.iter().all(|u| if u == &v { !gr_verts.contains(&last_u) } else { !gr_verts.contains(u) }) {
+										good = false;
+									}
+								});
+								if !good {
+									return false;
+								}
+							}
+							return true;
+						}
+					}));
+				}
+				let template_iter = gr_iter.flat_map(move |gr_verts| {
+					if limits.permute {
+						gr_verts.into_iter()
+							.permutations(limits.n_groups)
+							.map(move |gr_verts| {
+								gr_verts.into_iter()
+									.enumerate()
+									.fold(vec![GraphTemplateVertex::Free; limits.n_vertices], |mut acc, (gr_i, v)| {
+										acc[v.index()] = GraphTemplateVertex::Group(gr_i as u8);
+										acc
+									})
+							})
+							.map({
+								let g = g.clone();
+								move |mapping| {
+									GraphTemplate::new(g.clone(), mapping.as_slice())
+								}
+							})
+							.collect::<Vec<_>>()
+							.into_iter()
+					} else {
+						let mapping = gr_verts.into_iter()
+							.enumerate()
+							.fold(vec![GraphTemplateVertex::Free; limits.n_vertices], |mut acc, (gr_i, v)| {
+								acc[v.index()] = GraphTemplateVertex::Group(gr_i as u8);
+								acc
+							});
+						vec![GraphTemplate::new(g.clone(), mapping.as_slice())].into_iter()
+					}
+				});
+				#[cfg(feature = "rayon")]
+				let set = template_iter.par_bridge().collect::<CombSet<_>>();
+				#[cfg(not(feature = "rayon"))]
+				let set = template_iter.collect::<CombSet<_>>();
+				set
+			})
+		)
 	}
 }
