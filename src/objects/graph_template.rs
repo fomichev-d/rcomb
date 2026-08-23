@@ -255,8 +255,8 @@ impl CombEnum<GraphTemplateLimits> for GraphTemplate {
 						let g = g.clone();
 						move |gr_verts| {
 							gr_verts.iter()
-								.tuple_combinations()
-								.all(|(&u, &v)| !g.has_edge(u, v))
+								.array_combinations()
+								.all(|[&u, &v]| !g.has_edge(u, v))
 						}
 					})
 				);

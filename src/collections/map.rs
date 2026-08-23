@@ -888,7 +888,6 @@ impl<G: Eq + Hash, T> CollectionCsvExt<G, T> for HashMap<G, T> {
 
 #[cfg(test)]
 mod tests {
-	use crate::*;
 	use super::*;
 	impl CombEq for usize {
 		fn hash(&self) -> Vec<usize> { vec![self % 2] }

@@ -155,7 +155,7 @@ impl<V, E> Graph<V, E> {
 		self.filter_map(
 			|_, v_type| { Some(v_type.clone()) },
 			|e, e_type| { 
-					if f(e, e_type) {
+				if f(e, e_type) {
 					Some(e_type.clone())
 				} else {
 					None
@@ -224,7 +224,7 @@ impl<V, E> CombGrad<usize> for Graph<V, E> {
 #[cfg_attr(docsrs, doc(cfg(all(feature = "petgraph", feature = "geng"))))]
 #[cfg(feature = "geng")]
 impl CombEnum<usize> for Graph {
-	type Iter = Box<dyn Iterator<Item=Graph> + Sync + Send>;
+	type Iter = Box<dyn Iterator<Item=Self> + Sync + Send>;
 	// TODO: a proper implementation
 	fn iterate_deg_inner(degree: usize) -> Self::Iter {
 		if degree == 0 { return Box::new(std::iter::once(Graph::default())); }
