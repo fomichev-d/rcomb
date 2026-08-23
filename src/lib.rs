@@ -27,7 +27,7 @@ pub mod objects {
 	#[cfg(feature = "petgraph")]
 	pub mod graph;
 	#[cfg(feature = "petgraph")]
-	mod cyclic_order;
+	pub mod cyclic_order;
 	#[cfg(feature = "petgraph")]
 	pub mod embedded_graph;
 	#[cfg(feature = "petgraph")]
