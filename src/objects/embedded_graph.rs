@@ -434,7 +434,7 @@ impl<V, HE, E> CombGrad for EmbGraph<V, HE, E> {
 /// Vertex degrees either 1 or 3, every component has vertices of degree 1.
 /// Here we also exclude diagrams with loops as these are zero modulo AS.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct JacobiDeg(usize);
+pub struct JacobiDeg(pub usize);
 
 impl<V, HE, E> CombGrad<JacobiDeg> for EmbGraph<V, HE, E> {
 	fn degree(&self) -> JacobiDeg {
