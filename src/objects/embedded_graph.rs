@@ -89,6 +89,25 @@ impl<V, HE, E> EmbGraph<V, HE, E> {
 		Self { vertices: (0..n).map(|k| (CyclicOrder::default(), v_data(k))).collect(), half_edges: vec![], edges: vec![] }
 	}
 
+	pub fn validate(&self) {
+		for (e, &(source, target, _)) in self.edges.iter().enumerate() {
+			assert!(source < self.half_edges.len(), "e {}: bad he {}", e, source);
+			assert!(target < self.half_edges.len(), "e {}: bad he {}", e, target);
+			assert_eq!(self.half_edges[source].1, e, "e/he correspondence corrupted at {}/{}", e, source);
+			assert_eq!(self.half_edges[target].1, e, "e/he correspondence corrupted at {}/{}", e, target);
+		}
+		for (he, &(v, _, _)) in self.half_edges.iter().enumerate() {
+			assert!(v < self.num_verts(), "he {}: bad v {}", he, v);
+			assert!(self.vertices[v].0.data.contains(&he), "he/v correspondence corrupted at {}/{}", he, v);
+		}
+		for he in 0..self.half_edges.len() {
+			let k: usize = self.vertices.iter()
+				.map(|(order, _)| order.data.iter().filter(|&&x| x == he).count())
+				.sum();
+			assert_eq!(k, 1, "unexpected # of he {}: got {} != 1", he, k);
+		}
+	}
+
 	/// returns old value
 	pub fn update_vertex(&mut self, v: usize, v_data: V) -> V {
 		std::mem::replace(&mut self.vertices[v].1, v_data)
@@ -238,34 +257,38 @@ impl<V, HE, E> EmbGraph<V, HE, E> {
 			if let Some(val) = v_map(v, &self.vertices[v].1) {
 				let k = vmap.len();
 				vmap.insert(v, k);
-				vertices.push((k, val));
+				vertices.push((v, val));
 			}
 		}
 		let mut emap = HashMap::new();
 		for e in 0..self.num_edges() {
+			let (source, target, _) = self.edges[e];
+			let (v, u) = (self.he_vertex(source), self.he_vertex(target));
+			if !vmap.contains_key(&v) || !vmap.contains_key(&u) { continue; }
 			if let Some(val) = e_map(e, &self.edges[e].2) {
 				let k = emap.len();
 				emap.insert(e, k);
-				edges.push((k, val));
+				edges.push((e, val));
 			}
 		}
 		let mut hemap = HashMap::new();
 		for (he, (v, e, data)) in self.half_edges.iter().enumerate() {
 			if let Some(&v) = vmap.get(v) && let Some(&e) = emap.get(e) {
 				let val = he_map(he, data);
-				hemap.insert(he, half_edges.len());
+				let k = half_edges.len();
+				hemap.insert(he, k);
 				half_edges.push((v, e, val));
 			}
 		}
 
 		let vertices = vertices.into_iter()
-			.map(|(k, val)| (
-				self.vertices[k].0.filter_map(|l| hemap.get(l).copied()),
+			.map(|(v, val)| (
+				self.vertices[v].0.filter_map(|l| hemap.get(l).copied()),
 				val
 			))
 			.collect();
 		let edges = edges.into_iter()
-			.map(|(k, val)| (hemap[&self.edges[k].0], hemap[&self.edges[k].1], val))
+			.map(|(e, val)| (hemap[&self.edges[e].0], hemap[&self.edges[e].1], val))
 			.collect();
 
 		EmbGraph { vertices, half_edges, edges }
@@ -613,5 +636,42 @@ mod tests {
 			let degree = JacobiDeg(n);
 			assert_eq!(EmbGraph::iterate_deg(degree).count(), values[n], "at {}", n);
 		}
+	}
+
+	#[test]
+	fn connected_components() {
+		let g = EmbGraph::build(vec![
+			vec![0],
+			vec![0],
+			vec![1],
+			vec![1]
+		]);
+		g.validate();
+		eprintln!("{:?}", g);
+		g.connected_components_subgraphs();
+	}
+
+	#[test]
+	fn deg2_noniso() {
+		let g1 = EmbGraph::build(vec![
+			vec![0],
+			vec![0, 2, 1],
+			vec![3, 1, 2],
+			vec![3]
+		]);
+		g1.validate();
+		eprintln!("{:?}", g1);
+
+		let g2 = EmbGraph::build(vec![
+			vec![0],
+			vec![0, 2, 1],
+			vec![3, 2, 1],
+			vec![3]
+		]);
+		g2.validate();
+		eprintln!("{:?}", g2);
+
+		assert!(!g1.is_isomorphic(&g2));
+		assert!(!g2.is_isomorphic(&g1));
 	}
 }
