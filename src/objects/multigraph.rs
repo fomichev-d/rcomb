@@ -303,6 +303,21 @@ impl CombEnum<JacobiDeg> for MGraph {
 }
 
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
+impl CombEq for MGraph {
+	fn hash(&self) -> Vec<usize> {
+		// TODO: a finer hash!
+		self.graph.graph_hash()
+	}
+	fn is_isomorphic(&self, other: &Self) -> bool {
+		petgraph::algo::is_isomorphic_matching(
+			&self.graph.0, &other.graph.0,
+			|_, _| { true },
+			|n1, n2| { n1 == n2 }
+		)
+	}
+}
+
+#[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl CombCsv for MGraph {
 	type Err = ParseIntError;
 	const CSV_HEADER: &'static str = "multig-text";
@@ -346,7 +361,7 @@ mod test {
 	fn jacobi_count_deg() {
 		let values = vec![
 			1,
-			1, 4, 15, 72, 402, 2714, 21720, // 205863,
+			1, 4, 15, 72, 402, 2714, 21720, // 205863, 2277004,
 		];
 		for n in 0..values.len() {
 			let degree = JacobiDeg(n);
