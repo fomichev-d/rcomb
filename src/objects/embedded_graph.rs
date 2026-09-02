@@ -1,17 +1,17 @@
 use crate::collections::set::CombSet;
+use crate::objects::multigraph::MGraph;
 use crate::*;
-use crate::objects::graph::GraphHash;
+use crate::objects::graph::*;
 use crate::objects::cyclic_order::*;
 
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::ops::Range;
-use std::io::{BufReader, BufRead};
 
 use fixedbitset::FixedBitSet;
 use itertools::Itertools;
-use petgraph::graph::{NodeIndex, UnGraph};
-use petgraph::visit::{Data, EdgeRef, GetAdjacencyMatrix, GraphBase, IntoNeighbors, IntoNodeIdentifiers, NodeIndexable};
+use petgraph::visit::EdgeRef;
+use petgraph::visit::{Data, GetAdjacencyMatrix, GraphBase, IntoNeighbors, IntoNodeIdentifiers, NodeIndexable};
 
 
 pub struct EmbGraph<V=(), HE=(), E=()> {
@@ -82,6 +82,20 @@ impl EmbGraph {
 			vertices[v].0 = order;
 		}
 		Self { vertices, half_edges, edges }
+	}
+
+	pub fn from_multi(graph: MGraph) -> Self {
+		let mut g = Self::new(graph.num_verts(), |_| ());
+		for e in graph.graph.0.edge_references() {
+			for _ in 0..*e.weight() {
+				g.add_edge(
+					e.source().index(), None, (),
+					e.target().index(), None, (),
+					()
+				);
+			}
+		}
+		g
 	}
 }
 impl<V, HE, E> EmbGraph<V, HE, E> {
@@ -454,11 +468,6 @@ impl<V, HE, E> CombGrad for EmbGraph<V, HE, E> {
 	}
 }
 
-/// Vertex degrees either 1 or 3, every component has vertices of degree 1.
-/// Here we also exclude diagrams with loops as these are zero modulo AS.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct JacobiDeg(pub usize);
-
 impl<V, HE, E> CombGrad<JacobiDeg> for EmbGraph<V, HE, E> {
 	fn degree(&self) -> JacobiDeg {
 		debug_assert_eq!(self.num_verts() % 2, 0);
@@ -468,90 +477,11 @@ impl<V, HE, E> CombGrad<JacobiDeg> for EmbGraph<V, HE, E> {
 impl CombEnum<JacobiDeg> for EmbGraph {
 	type Iter = Box<dyn Iterator<Item=Self> + Sync + Send>;
 	fn iterate_deg_inner(degree: JacobiDeg) -> Self::Iter {
-		let JacobiDeg(degree) = degree;
-		let n = degree * 2;
-		if n == 0 {
-			return Box::new(std::iter::once(EmbGraph::default()));
-		}
-		let mut geng = std::process::Command::new("geng");
-		let geng_stdout = geng
-			.arg("-q")
-			.arg(n.to_string())
-			.arg("-d1")
-			.arg("-D3")
-			.stdout(std::process::Stdio::piped())
-			.stderr(std::process::Stdio::null())
-			.spawn()
-			.expect("geng failed")
-			.stdout
-			.expect("geng failed");
-		let mut multig = std::process::Command::new("multig");
-		let multig_stdout = multig
-			.arg("-q")
-			.arg("-T")
-			.arg("-D3")
-			.stdin(geng_stdout)
-			.stdout(std::process::Stdio::piped())
-			.spawn()
-			.expect("multig failed")
-			.stdout
-			.expect("multig failed");
 		Box::new(
-			BufReader::new(multig_stdout)
-				.lines()
-				.filter_map(|l| l.ok())
-				.filter(|l| l.len() > 0)
-				.map(|l| l.split_whitespace()
-					.flat_map(|x| x.parse::<usize>())
-					.collect::<Vec<_>>()
-				)
-				.map(|data| (
-					data[0], data[1],
-					data[2..].into_iter()
-						.copied()
-						.tuples::<(_, _, _)>()
-						.collect::<Vec<_>>()
-				))
-				.map(|(n, _, data)| {
-					let mut g = UnGraph::default();
-					let verts = (0..n)
-						.map(|_| g.add_node(()))
-						.collect::<Vec<_>>();
-					for (v1, v2, mult) in data {
-						for _ in 0..mult {
-							g.add_edge(verts[v1], verts[v2], ());
-						}
-					}
-					g
-				})
-				// filter out graphs with vertex degree 2
-				.filter(move |graph| {
-					graph.node_identifiers()
-						.map(|v: NodeIndex<usize>| graph.neighbors(v).count())
-						.all(|deg| deg == 1 || deg == 3)
-				})
-				// each connected component must have a degree 1 vertex
-				.filter(|graph| {
-					let mut scc = petgraph::algo::TarjanScc::new();
-					let mut good = true;
-					scc.run(graph, |comp: &[NodeIndex<usize>]| {
-						good &= comp.iter().any(|&v| {
-							graph.edges(v).count() == 1
-						});
-					});
-					good
-				})
+			MGraph::iterate_deg_inner(degree)
+				.map(|graph| Self::from_multi(graph))
 				// permutations of half-edge orders
-				.flat_map(|graph| {
-					let base = EmbGraph::build(
-						graph.node_identifiers()
-							.map(|v| graph.edges(v)
-								.map(|e| e.id().index())
-								.collect()
-							)
-							.collect()
-					);
-					// permute at vertices
+				.flat_map(|base| {
 					let graphs: CombSet<_> = base.vertices.iter()
 						.enumerate()
 						.filter(|(_, (order, ()))| order.len() > 1)
@@ -629,8 +559,8 @@ mod tests {
 	#[test]
 	fn test_count_jacobi() {
 		let values = vec![
-			1, 1, 15, 227, 4311, 96559,
-			2632903, // 85532247,
+			1,
+			1, 15, 227, 4311, 96559, 2632903, // 85532247,
 		];
 		for n in 0..values.len() {
 			let degree = JacobiDeg(n);

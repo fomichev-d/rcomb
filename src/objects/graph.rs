@@ -12,6 +12,14 @@ use petgraph::prelude::StableUnGraph;
 use petgraph::visit::{EdgeRef, GetAdjacencyMatrix, IntoNodeReferences};
 use itertools::*;
 
+// common definitions
+
+/// Used for multigraphs.
+/// Vertex degrees either 1 or 3, every component has vertices of degree 1.
+/// Here we also exclude diagrams with loops as these are zero modulo AS.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct JacobiDeg(pub usize);
+
 // petgraph integration
 
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
@@ -30,7 +38,7 @@ impl<V, E> From<StableUnGraph<V, E>> for Graph<V, E> {
 impl FromGraph6 for Graph {
 	#[inline]
 	fn from_graph6_string(graph6_string: String) -> Self {
-		Graph(UnGraph::from_graph6_string(graph6_string))
+		Self(UnGraph::from_graph6_string(graph6_string))
 	}
 }
 impl ToGraph6 for Graph {
@@ -108,12 +116,12 @@ impl<V, E> Graph<V, E> {
 	}
 	#[inline]
 	pub fn add_edge_with(&mut self, u: NodeIndex, v: NodeIndex, weight: E) {
-		self.0.add_edge(u, v, weight);
+		self.0.update_edge(u, v, weight);
 	}
 	#[inline]
 	pub fn delete_edge(&mut self, u: NodeIndex, v: NodeIndex) -> Option<E> {
-		let idx = self.0.find_edge(u, v);
-		idx.map(|e| self.0.remove_edge(e)).flatten()
+		let e = self.0.find_edge(u, v)?;
+		self.0.remove_edge(e)
 	}
 	#[inline]
 	pub fn has_edge(&self, u: NodeIndex, v: NodeIndex) -> bool {
@@ -154,7 +162,7 @@ impl<V, E> Graph<V, E> {
 	pub fn edge_subgraph<F: FnMut(EdgeIndex, &E) -> bool>(&self, mut f: F) -> Self where V: Clone, E: Clone {
 		self.filter_map(
 			|_, v_type| { Some(v_type.clone()) },
-			|e, e_type| { 
+			|e, e_type| {
 				if f(e, e_type) {
 					Some(e_type.clone())
 				} else {
@@ -186,7 +194,7 @@ impl<V, E> Graph<V, E> {
 impl<V> Graph<V, ()> {
 	#[inline]
 	pub fn add_edge(&mut self, u: NodeIndex, v: NodeIndex) {
-		self.0.add_edge(u, v, ());
+		self.0.update_edge(u, v, ());
 	}
 	#[inline]
 	pub fn switch_edge(&mut self, u: NodeIndex, v: NodeIndex) {
