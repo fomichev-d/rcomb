@@ -48,8 +48,10 @@ pub mod io {
 // core traits
 
 pub trait CombEq<G = Self> {
+	type Certificate;
 	fn hash(&self) -> Vec<usize>;
 	fn is_isomorphic(&self, other: &G) -> bool;
+	fn find_isomorphism(&self, other: &G) -> Option<Self::Certificate>;
 }
 
 pub trait CombGrad<T: Copy + Eq + Send + Sync = usize> {

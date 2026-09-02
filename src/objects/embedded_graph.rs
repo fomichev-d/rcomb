@@ -97,6 +97,11 @@ impl EmbGraph {
 		}
 		g
 	}
+
+	pub fn isomorphism_sign(&self, other: &Self, vmap: &[usize]) -> i8 {
+		emb_graph_match_modulo_as(self, other, vmap, HashMap::new(), HashMap::new())
+			.expect("graphs must admit isomorphism modulo AS!")
+	}
 }
 impl<V, HE, E> EmbGraph<V, HE, E> {
 	pub fn new<F: Fn(usize) -> V>(n: usize, v_data: F) -> Self {
@@ -377,6 +382,133 @@ impl<V, HE, E> GraphHash for EmbGraph<V, HE, E> {
 		data
 	}
 }
+// assumption: g1, g2 are not empty, vmap preserves degrees
+fn emb_graph_match_modulo_as(
+	g1: &EmbGraph,
+	g2: &EmbGraph,
+	vmap: &[usize],
+	mut hemap: HashMap<usize, usize>,
+	mut hemap_unchecked: HashMap<usize, usize>,
+) -> Option<i8> {
+	if hemap.len() == g1.half_edges.len() {
+		return Some(1);
+	}
+	if hemap_unchecked.len() == 0 {
+		// match a new vertex
+		let v = (0..g1.num_verts())
+			.filter(|&v| {
+				g1.vertices[v].0.data.iter()
+					.any(|he| !hemap.contains_key(he))
+			})
+			.min_by_key(|&v| g1.vertex_degree(v))
+			.unwrap();
+		let u = vmap[v];
+		let v_order = &g1.vertices[v].0;
+		let u_order = &g2.vertices[u].0;
+		// we assume the mapping gives up equal degrees at all vertices
+		let deg = v_order.len();
+		// try matching, direct
+		for offset in 0..deg {
+			let mut hemap_unchecked = HashMap::new();
+			for i in 0..deg {
+				hemap_unchecked.insert(v_order.data[i], u_order.data[(offset + i) % deg]);
+			}
+			if let Some(sign) = emb_graph_match_modulo_as(g1, g2, vmap, hemap.clone(), hemap_unchecked) {
+				return Some(sign);
+			}
+		}
+		// try matching, reversed
+		if deg > 2 {
+			for offset in 0..deg {
+				let mut hemap_unchecked = HashMap::new();
+				for i in 0..deg {
+					hemap_unchecked.insert(v_order.data[i], u_order.data[(deg + offset - i) % deg]);
+				}
+				if let Some(sign) = emb_graph_match_modulo_as(g1, g2, vmap, hemap.clone(), hemap_unchecked) {
+					return Some(-sign);
+				}
+			}
+		}
+		return None;
+	}
+	// match a vertex
+	let he0 = hemap_unchecked.keys()
+		.next()
+		.copied()
+		.and_then(|k| hemap_unchecked.remove_entry(&k))
+		.unwrap();
+	hemap.insert(he0.0, he0.1);
+	let u = g1.he_vertex(he0.0);
+	let v = g2.he_vertex(he0.1);
+	let u_order = &g1.vertices[u].0;
+	let v_order = &g2.vertices[v].0;
+	let he_check = |he1: usize, he2: usize| {
+		if let Some(&he) = hemap.get(&he1) {
+			he == he2
+		} else if let Some(&he) = hemap_unchecked.get(&he1) {
+			he == he2
+		} else {
+			true
+		}
+	};
+
+	// try direct matching
+	let mut hemap2 = hemap.clone();
+	let mut hemap2_unchecked = hemap_unchecked.clone();
+	let mut good = true;
+	// check local compatibility
+	for he in u_order.iter_from(he0.0).zip(v_order.iter_from(he0.1)) {
+		if !he_check(he.0, he.1) {
+			good = false;
+			break;
+		}
+		hemap2.insert(he.0, he.1);
+		hemap2_unchecked.remove(&he.0);
+		let he_other = (g1.he_other(he.0), g2.he_other(he.1));
+		if !he_check(he_other.0, he_other.1) {
+			good = false;
+			break;
+		}
+		if !hemap2.contains_key(&he_other.0) {
+			hemap2_unchecked.insert(he_other.0, he_other.1);
+		}
+	}
+	if good {
+		if let Some(sign) = emb_graph_match_modulo_as(g1, g2, vmap, hemap2, hemap2_unchecked) {
+			return Some(sign);
+		}
+	}
+
+	// try reverse matching
+	let v_order = v_order.rev();
+	hemap2 = hemap.clone();
+	hemap2_unchecked = hemap_unchecked.clone();
+	good = true;
+	// check local compatibility
+	for he in u_order.iter_from(he0.0).zip(v_order.iter_from(he0.1)) {
+		if !he_check(he.0, he.1) {
+			good = false;
+			break;
+		}
+		hemap2.insert(he.0, he.1);
+		hemap2_unchecked.remove(&he.0);
+		let he_other = (g1.he_other(he.0), g2.he_other(he.1));
+		if !he_check(he_other.0, he_other.1) {
+			good = false;
+			break;
+		}
+		if !hemap2.contains_key(&he_other.0) {
+			hemap2_unchecked.insert(he_other.0, he_other.1);
+		}
+	}
+	if good {
+		if let Some(sign) = emb_graph_match_modulo_as(g1, g2, vmap, hemap2, hemap2_unchecked) {
+			return Some(-sign);
+		}
+	}
+
+	None
+}
 // assumption: g1, g2 are connected, not empty
 fn emb_graph_match(g1: &EmbGraph, g2: &EmbGraph, mut hemap: HashMap<usize, usize>, mut hemap_unchecked: HashMap<usize, usize>) -> bool {
 	if hemap.len() == g1.half_edges.len() {
@@ -408,7 +540,7 @@ fn emb_graph_match(g1: &EmbGraph, g2: &EmbGraph, mut hemap: HashMap<usize, usize
 	// match a cycle
 	let he0 = hemap_unchecked.keys()
 		.next()
-		.cloned()
+		.copied()
 		.and_then(|k| hemap_unchecked.remove_entry(&k))
 		.unwrap();
 	hemap.insert(he0.0, he0.1);
@@ -436,6 +568,7 @@ fn emb_graph_match(g1: &EmbGraph, g2: &EmbGraph, mut hemap: HashMap<usize, usize
 	emb_graph_match(g1, g2, hemap, hemap_unchecked)
 }
 impl CombEq for EmbGraph {
+	type Certificate = !;
 	fn hash(&self) -> Vec<usize> {
 		self.graph_hash()
 	}
@@ -460,6 +593,10 @@ impl CombEq for EmbGraph {
 			}
 		}
 		true
+	}
+	fn find_isomorphism(&self, _other: &Self) -> Option<Self::Certificate> {
+		// TODO: hemap? need to combine those from connected components
+		todo!()
 	}
 }
 impl<V, HE, E> CombGrad for EmbGraph<V, HE, E> {
@@ -560,7 +697,7 @@ mod tests {
 	fn test_count_jacobi() {
 		let values = vec![
 			1,
-			1, 15, 227, 4311, 96559, 2632903, // 85532247,
+			1, 14, 212, 3944, 89280, 2454784, // 80783616,
 		];
 		for n in 0..values.len() {
 			let degree = JacobiDeg(n);
@@ -603,5 +740,30 @@ mod tests {
 
 		assert!(!g1.is_isomorphic(&g2));
 		assert!(!g2.is_isomorphic(&g1));
+	}
+
+	#[test]
+	fn deg2_noniso_sign() {
+		let g1 = EmbGraph::build(vec![
+			vec![0],
+			vec![0, 2, 1],
+			vec![3, 1, 2],
+			vec![3]
+		]);
+		g1.validate();
+		eprintln!("{:?}", g1);
+
+		let g2 = EmbGraph::build(vec![
+			vec![0],
+			vec![0, 2, 1],
+			vec![3, 2, 1],
+			vec![3]
+		]);
+		g2.validate();
+		eprintln!("{:?}", g2);
+
+		let vmap = [0, 1, 2, 3];
+
+		assert_eq!(g1.isomorphism_sign(&g2, &vmap), -1);
 	}
 }

@@ -1,4 +1,5 @@
 use crate::io::CombCsv;
+use crate::objects::embedded_graph::EmbGraph;
 use crate::*;
 use crate::objects::graph::*;
 
@@ -37,6 +38,21 @@ impl<V> From<StableUnGraph<V, ()>> for MGraph<V> {
 	fn from(value: StableUnGraph<V, ()>) -> Self {
 		let graph = Graph::from(value.map_owned(|_, v| { v }, |_, _| { 1 }));
 		Self { graph }
+	}
+}
+impl<V> From<EmbGraph<V>> for MGraph<V> {
+	fn from(value: EmbGraph<V>) -> Self {
+		let mut graph = Self::default();
+		let EmbGraph { vertices, half_edges, edges } = value;
+		let verts: Vec<_> = vertices.into_iter()
+			.map(|(_, weight)| { graph.add_vertex_with(weight) })
+			.collect();
+		for (source_he, target_he, ()) in edges {
+			let source = verts[half_edges[source_he].0];
+			let target = verts[half_edges[target_he].0];
+			graph.add_edge(source, target);
+		}
+		graph
 	}
 }
 
@@ -230,10 +246,8 @@ impl CombEnum<JacobiDeg> for MGraph {
 		}
 		let mut geng = std::process::Command::new("geng");
 		let geng_stdout = geng
-			.arg("-q")
+			.arg("-qcd1D3")
 			.arg(n.to_string())
-			.arg("-d1")
-			.arg("-D3")
 			.stdout(std::process::Stdio::piped())
 			.stderr(std::process::Stdio::null())
 			.spawn()
@@ -242,9 +256,7 @@ impl CombEnum<JacobiDeg> for MGraph {
 			.expect("geng failed");
 		let mut multig = std::process::Command::new("multig");
 		let multig_stdout = multig
-			.arg("-q")
-			.arg("-T")
-			.arg("-D3")
+			.arg("-qTD3")
 			.stdin(geng_stdout)
 			.stdout(std::process::Stdio::piped())
 			.spawn()
@@ -304,16 +316,26 @@ impl CombEnum<JacobiDeg> for MGraph {
 
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl CombEq for MGraph {
+	type Certificate = Vec<usize>;
 	fn hash(&self) -> Vec<usize> {
 		// TODO: a finer hash!
 		self.graph.graph_hash()
 	}
 	fn is_isomorphic(&self, other: &Self) -> bool {
 		petgraph::algo::is_isomorphic_matching(
-			&self.graph.0, &other.graph.0,
+			&self.graph.0,
+			&other.graph.0,
 			|_, _| { true },
 			|n1, n2| { n1 == n2 }
 		)
+	}
+	fn find_isomorphism(&self, other: &Self) -> Option<Self::Certificate> {
+		petgraph::algo::isomorphism::subgraph_isomorphisms_iter(
+			&&self.graph.0,
+			&&other.graph.0,
+			&mut |_, _| { true },
+			&mut |e1, e2| { e1 == e2 }
+		).map(|mut it| it.next()).flatten()
 	}
 }
 
@@ -361,7 +383,7 @@ mod test {
 	fn jacobi_count_deg() {
 		let values = vec![
 			1,
-			1, 4, 15, 72, 402, 2714, 21720, // 205863, 2277004,
+			1, 3, 11, 51, 297, 2083, 17488, // 172782,
 		];
 		for n in 0..values.len() {
 			let degree = JacobiDeg(n);

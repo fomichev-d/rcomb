@@ -890,8 +890,12 @@ impl<G: Eq + Hash, T> CollectionCsvExt<G, T> for HashMap<G, T> {
 mod tests {
 	use super::*;
 	impl CombEq for usize {
+		type Certificate = !;
 		fn hash(&self) -> Vec<usize> { vec![self % 2] }
 		fn is_isomorphic(&self, other: &Self) -> bool { self == other }
+		fn find_isomorphism(&self, _other: &Self) -> Option<Self::Certificate> {
+			unimplemented!()
+		}
 	}
 	impl CombGrad<usize> for usize {
 		fn degree(&self) -> usize { *self }

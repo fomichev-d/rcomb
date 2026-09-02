@@ -14,9 +14,10 @@ use itertools::*;
 
 // common definitions
 
-/// Used for multigraphs.
+/// Used for multigraphs and embedded graphs.
 /// Vertex degrees either 1 or 3, every component has vertices of degree 1.
 /// Here we also exclude diagrams with loops as these are zero modulo AS.
+/// We also only generate connected graphs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct JacobiDeg(pub usize);
 
@@ -329,77 +330,179 @@ pub trait EdgeMatch: Eq {}
 
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl CombEq for Graph {
+	type Certificate = Vec<usize>;
 	fn hash(&self) -> Vec<usize> {
 		self.graph_hash()
 	}
 	fn is_isomorphic(&self, other: &Self) -> bool {
 		petgraph::algo::is_isomorphic(&self.0, &other.0)
 	}
+	fn find_isomorphism(&self, other: &Self) -> Option<Self::Certificate> {
+		petgraph::algo::isomorphism::subgraph_isomorphisms_iter(
+			&&self.0,
+			&&other.0,
+			&mut |_, _| { true },
+			&mut |_, _| { true }
+		).map(|mut it| it.next()).flatten()
+	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<Ix: IndexType> CombEq<Graph> for UnGraph<(), (), Ix> {
+	type Certificate = Vec<usize>;
 	fn hash(&self) -> Vec<usize> {
 	    self.graph_hash()
 	}
 	fn is_isomorphic(&self, other: &Graph) -> bool {
 		petgraph::algo::is_isomorphic(&self, &other.0)
 	}
+	fn find_isomorphism(&self, other: &Graph) -> Option<Self::Certificate> {
+		petgraph::algo::isomorphism::subgraph_isomorphisms_iter(
+			&&self,
+			&&other.0,
+			&mut |_, _| { true },
+			&mut |_, _| { true }
+		).map(|mut it| it.next()).flatten()
+	}
 }
 
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<N: NodeMatch> CombEq for Graph<N, ()> {
+	type Certificate = Vec<usize>;
 	fn hash(&self) -> Vec<usize> {
 		self.graph_hash()
 	}
 	fn is_isomorphic(&self, other: &Self) -> bool {
-		petgraph::algo::is_isomorphic_matching(&self.0, &other.0, |v1, v2| { v1 == v2 }, |_, _| { true })
+		petgraph::algo::is_isomorphic_matching(
+			&self.0,
+			&other.0,
+			|v1, v2| { v1 == v2 },
+			|_, _| { true }
+		)
+	}
+	fn find_isomorphism(&self, other: &Self) -> Option<Self::Certificate> {
+		petgraph::algo::isomorphism::subgraph_isomorphisms_iter(
+			&&self.0,
+			&&other.0,
+			&mut |v1, v2| { v1 == v2 },
+			&mut |_, _| { true }
+		).map(|mut it| it.next()).flatten()
 	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<N: NodeMatch, Ix: IndexType> CombEq<Graph<N, ()>> for UnGraph<N, (), Ix> {
+	type Certificate = Vec<usize>;
 	fn hash(&self) -> Vec<usize> {
 	    self.graph_hash()
 	}
 	fn is_isomorphic(&self, other: &Graph<N, ()>) -> bool {
-		petgraph::algo::is_isomorphic_matching(&self, &other.0, |v1, v2| { v1 == v2 }, |_, _| { true })
+		petgraph::algo::is_isomorphic_matching(
+			&self,
+			&other.0,
+			|v1, v2| { v1 == v2 },
+			|_, _| { true }
+		)
+	}
+	fn find_isomorphism(&self, other: &Graph<N, ()>) -> Option<Self::Certificate> {
+		petgraph::algo::isomorphism::subgraph_isomorphisms_iter(
+			&&self,
+			&&other.0,
+			&mut |v1, v2| { v1 == v2 },
+			&mut |_, _| { true }
+		).map(|mut it| it.next()).flatten()
 	}
 }
 
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<E: EdgeMatch> CombEq for Graph<(), E> {
+	type Certificate = Vec<usize>;
 	fn hash(&self) -> Vec<usize> {
 		self.graph_hash()
 	}
 	fn is_isomorphic(&self, other: &Self) -> bool {
-		petgraph::algo::is_isomorphic_matching(&self.0, &other.0, |_, _| { true }, |e1, e2| { e1 == e2 })
+		petgraph::algo::is_isomorphic_matching(
+			&self.0,
+			&other.0,
+			|_, _| { true },
+			|e1, e2| { e1 == e2 }
+		)
+	}
+	fn find_isomorphism(&self, other: &Graph<(), E>) -> Option<Self::Certificate> {
+		petgraph::algo::isomorphism::subgraph_isomorphisms_iter(
+			&&self.0,
+			&&other.0,
+			&mut |_, _| { true },
+			&mut |e1, e2| { e1 == e2 }
+		).map(|mut it| it.next()).flatten()
 	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<E: EdgeMatch, Ix: IndexType> CombEq<Graph<(), E>> for UnGraph<(), E, Ix> {
+	type Certificate = Vec<usize>;
 	fn hash(&self) -> Vec<usize> {
 	    self.graph_hash()
 	}
 	fn is_isomorphic(&self, other: &Graph<(), E>) -> bool {
-		petgraph::algo::is_isomorphic_matching(&self, &other.0, |_, _| { true }, |e1, e2| { e1 == e2 })
+		petgraph::algo::is_isomorphic_matching(
+			&self,
+			&other.0,
+			|_, _| { true },
+			|e1, e2| { e1 == e2 }
+		)
+	}
+	fn find_isomorphism(&self, other: &Graph<(), E>) -> Option<Self::Certificate> {
+		petgraph::algo::isomorphism::subgraph_isomorphisms_iter(
+			&&self,
+			&&other.0,
+			&mut |_, _| { true },
+			&mut |e1, e2| { e1 == e2 }
+		).map(|mut it| it.next()).flatten()
 	}
 }
 
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<N: NodeMatch, E: EdgeMatch> CombEq for Graph<N, E> {
+	type Certificate = Vec<usize>;
 	fn hash(&self) -> Vec<usize> {
 		self.graph_hash()
 	}
 	fn is_isomorphic(&self, other: &Self) -> bool {
-		petgraph::algo::is_isomorphic_matching(&self.0, &other.0, |v1, v2| { v1 == v2 }, |e1, e2| { e1 == e2 })
+		petgraph::algo::is_isomorphic_matching(
+			&self.0,
+			&other.0,
+			|v1, v2| { v1 == v2 },
+			|e1, e2| { e1 == e2 }
+		)
+	}
+	fn find_isomorphism(&self, other: &Graph<N, E>) -> Option<Self::Certificate> {
+		petgraph::algo::isomorphism::subgraph_isomorphisms_iter(
+			&&self.0,
+			&&other.0,
+			&mut |v1, v2| { v1 == v2 },
+			&mut |e1, e2| { e1 == e2 }
+		).map(|mut it| it.next()).flatten()
 	}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<N: NodeMatch, E: EdgeMatch, Ix: IndexType> CombEq<Graph<N, E>> for UnGraph<N, E, Ix> {
+	type Certificate = Vec<usize>;
 	fn hash(&self) -> Vec<usize> {
 	    self.graph_hash()
 	}
 	fn is_isomorphic(&self, other: &Graph<N, E>) -> bool {
-		petgraph::algo::is_isomorphic_matching(&self, &other.0, |v1, v2| { v1 == v2 }, |e1, e2| { e1 == e2 })
+		petgraph::algo::is_isomorphic_matching(
+			&self,
+			&other.0,
+			|v1, v2| { v1 == v2 },
+			|e1, e2| { e1 == e2 }
+		)
+	}
+	fn find_isomorphism(&self, other: &Graph<N, E>) -> Option<Self::Certificate> {
+		petgraph::algo::isomorphism::subgraph_isomorphisms_iter(
+			&&self,
+			&&other.0,
+			&mut |v1, v2| { v1 == v2 },
+			&mut |e1, e2| { e1 == e2 }
+		).map(|mut it| it.next()).flatten()
 	}
 }
 

@@ -23,10 +23,14 @@ fn busy_sleep(dur: Duration) -> Duration {
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct TestStruct(usize);
 impl CombEq for TestStruct {
+	type Certificate = !;
 	fn hash(&self) -> Vec<usize> { vec![self.0 % 6] }
 	fn is_isomorphic(&self, other: &Self) -> bool {
 		black_box(busy_sleep(SLEEP));
 		self == other
+	}
+	fn find_isomorphism(&self, _other: &Self) -> Option<Self::Certificate> {
+		unimplemented!()
 	}
 }
 impl CombGrad<usize> for TestStruct {
