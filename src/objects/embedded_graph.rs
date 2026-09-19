@@ -393,6 +393,11 @@ fn emb_graph_match_modulo_as(
 	if hemap.len() == g1.half_edges.len() {
 		return Some(1);
 	}
+	let v_check = |he1: usize, he2: usize| {
+		let u = g1.he_vertex(he1);
+		let v = g2.he_vertex(he2);
+		vmap[u] == v
+	};
 	if hemap_unchecked.len() == 0 {
 		// match a new vertex
 		let v = (0..g1.num_verts())
@@ -408,9 +413,13 @@ fn emb_graph_match_modulo_as(
 		// we assume the mapping gives up equal degrees at all vertices
 		let deg = v_order.len();
 		// try matching, direct
+		'direct:
 		for offset in 0..deg {
 			let mut hemap_unchecked = HashMap::new();
 			for i in 0..deg {
+				if !v_check(v_order.data[i], u_order.data[(offset + i) % deg]) {
+					continue 'direct;
+				}
 				hemap_unchecked.insert(v_order.data[i], u_order.data[(offset + i) % deg]);
 			}
 			if let Some(sign) = emb_graph_match_modulo_as(g1, g2, vmap, hemap.clone(), hemap_unchecked) {
@@ -419,9 +428,13 @@ fn emb_graph_match_modulo_as(
 		}
 		// try matching, reversed
 		if deg > 2 {
+			'reverse:
 			for offset in 0..deg {
 				let mut hemap_unchecked = HashMap::new();
 				for i in 0..deg {
+					if !v_check(v_order.data[i], u_order.data[(deg + offset - i) % deg]) {
+						continue 'reverse;
+					}
 					hemap_unchecked.insert(v_order.data[i], u_order.data[(deg + offset - i) % deg]);
 				}
 				if let Some(sign) = emb_graph_match_modulo_as(g1, g2, vmap, hemap.clone(), hemap_unchecked) {
@@ -443,6 +456,7 @@ fn emb_graph_match_modulo_as(
 	let u_order = &g1.vertices[u].0;
 	let v_order = &g2.vertices[v].0;
 	let he_check = |he1: usize, he2: usize| {
+		if !v_check(he1, he2) { return false; }
 		if let Some(&he) = hemap.get(&he1) {
 			he == he2
 		} else if let Some(&he) = hemap_unchecked.get(&he1) {
@@ -765,5 +779,35 @@ mod tests {
 		let vmap = [0, 1, 2, 3];
 
 		assert_eq!(g1.isomorphism_sign(&g2, &vmap), -1);
+	}
+
+	#[test]
+	fn iso_sign() {
+		for deg in 0..=5 {
+			let degree = JacobiDeg(deg);
+			let n = deg * 2;
+			'graphs:
+			for g in EmbGraph::iterate_deg_inner(degree) {
+				// check if it is trivially zero modulo AS
+				for v in 0..n {
+					let mut g2 = g.clone();
+					g2.vertices[v].0 = g2.vertices[v].0.rev();
+					if g.is_isomorphic(&g2) {
+						continue 'graphs;
+					}
+				}
+				let vmap: Vec<_> = (0..n).collect();
+				for v_inv in (0..n).powerset() {
+					let mut g2 = g.clone();
+					for &v in v_inv.iter() {
+						g2.vertices[v].0 = g2.vertices[v].0.rev();
+					}
+					let sign1 = g.isomorphism_sign(&g2, &vmap);
+					let sign2 = g2.isomorphism_sign(&g, &vmap);
+					assert_eq!(sign1, sign2, "order-dependent signs detected at g={:?} v_inv={:?}!", g, v_inv);
+					assert_eq!(sign1, (-1i8).pow(v_inv.len() as u32), "bad sign at g={:?} v_inv={:?}!", g, v_inv);
+				}
+			}
+		}
 	}
 }

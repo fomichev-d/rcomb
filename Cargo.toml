@@ -1,19 +1,19 @@
 [package]
 name = "rcomb"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 keywords = ["combinatorics", "mathematics"]
 categories = ["algorithms", "data-structures", "mathematics"]
 repository = "https://github.com/fomichev-d/rcomb"
 description = "Combinatorial objects, traits, collections"
-readme = "README.md"
 
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
+petgraph = ["dep:petgraph", "dep:fixedbitset"]
 rayon = ["dep:rayon", "dep:uf_rush"]
 geng = []
 
@@ -27,7 +27,7 @@ prime-factor = { version = "0.7.0", default-features = false }
 csv = "1.4.0"
 kdam = { version = "0.6.4", optional = true }
 uf_rush = { version = "0.2.1", optional = true }
-fixedbitset = "0.5.7"
+fixedbitset = { version = "0.5.7", optional = true }
 
 [dev-dependencies]
 criterion = "0.8.2"
