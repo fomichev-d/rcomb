@@ -233,6 +233,17 @@ impl<V> CombGrad<JacobiDeg> for MGraph<V> {
 		JacobiDeg(self.graph.num_verts() / 2)
 	}
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
+impl<V> CombGrad<JacobiFineDeg> for MGraph<V> {
+	fn degree(&self) -> JacobiFineDeg {
+		JacobiFineDeg {
+			deg: self.graph.num_verts() / 2,
+			legs: self.graph.vertices()
+				.filter(|&(v, _)| self.graph.vertex_degree(v) == 1)
+				.count()
+		}
+	}
+}
 
 #[cfg_attr(docsrs, doc(cfg(all(feature = "petgraph", feature = "geng"))))]
 #[cfg(feature = "geng")]
@@ -310,6 +321,96 @@ impl CombEnum<JacobiDeg> for MGraph {
 	}
 	// TODO: implement it properly
 	fn count_deg(degree: JacobiDeg) -> Option<usize> {
+		Some(Self::iterate_deg_inner(degree).count())
+	}
+}
+#[cfg_attr(docsrs, doc(cfg(all(feature = "petgraph", feature = "geng"))))]
+#[cfg(feature = "geng")]
+impl CombEnum<JacobiFineDeg> for MGraph {
+	type Iter = Box<dyn Iterator<Item=Self> + Sync + Send>;
+	fn iterate_deg_inner(degree: JacobiFineDeg) -> Self::Iter {
+		let JacobiFineDeg { deg, legs } = degree;
+		let e = deg * 3 - legs;
+		let n = deg * 2;
+		if n == 0 && legs == 0 {
+			return Box::new(std::iter::once(MGraph::default()));
+		} else if n == 0 {
+			return Box::new(std::iter::empty())
+		}
+		let mut geng = std::process::Command::new("geng");
+		let geng_stdout = geng
+			.arg("-qcd1D3")
+			.arg(n.to_string())
+			.arg(format!("0:{}", e))
+			.stdout(std::process::Stdio::piped())
+			.stderr(std::process::Stdio::null())
+			.spawn()
+			.expect("geng failed")
+			.stdout
+			.expect("geng failed");
+		let mut multig = std::process::Command::new("multig");
+		let multig_stdout = multig
+			.arg("-qTD3")
+			.arg(format!("-e{}", e))
+			.stdin(geng_stdout)
+			.stdout(std::process::Stdio::piped())
+			.spawn()
+			.expect("multig failed")
+			.stdout
+			.expect("multig failed");
+		Box::new(
+			BufReader::new(multig_stdout)
+				.lines()
+				.filter_map(|l| l.ok())
+				.filter(|l| l.len() > 0)
+				.map(|l| l.split_whitespace()
+					.flat_map(|x| x.parse::<usize>())
+					.collect::<Vec<_>>()
+				)
+				.map(|data| (
+					data[0], data[1],
+					data[2..].into_iter()
+						.copied()
+						.tuples::<(_, _, _)>()
+						.collect::<Vec<_>>()
+				))
+				.map(|(n, _, data)| {
+					let mut g = MGraph::default();
+					let verts = (0..n)
+						.map(|_| g.add_vertex())
+						.collect::<Vec<_>>();
+					for (v1, v2, mult) in data {
+						g.add_multiedge(verts[v1], verts[v2], mult);
+					}
+					g
+				})
+				// filter out graphs with vertex degree 2
+				.filter(move |graph| {
+					graph.vertices()
+						.map(|(v, _)| graph.vertex_degree(v))
+						.all(|deg| deg == 1 || deg == 3)
+				})
+				// filter out graphs with the wrong number of legs
+				.filter(move |graph| {
+					legs == graph.vertices()
+						.filter(|&(v, _)| graph.vertex_degree(v) == 1)
+						.count()
+				})
+				// each connected component must have a degree 1 vertex
+				.filter(|graph| {
+					let mut scc = petgraph::algo::TarjanScc::new();
+					let mut good = true;
+					scc.run(&graph.graph.0, |comp: &[NodeIndex]| {
+						good &= comp.iter().any(|&v| {
+							graph.vertex_degree(v) == 1
+						});
+					});
+					good
+				})
+		)
+	}
+	// TODO: implement it properly
+	fn count_deg(degree: JacobiFineDeg) -> Option<usize> {
 		Some(Self::iterate_deg_inner(degree).count())
 	}
 }

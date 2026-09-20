@@ -625,6 +625,18 @@ impl<V, HE, E> CombGrad<JacobiDeg> for EmbGraph<V, HE, E> {
 		JacobiDeg(self.num_verts() / 2)
 	}
 }
+impl<V, HE, E> CombGrad<JacobiFineDeg> for EmbGraph<V, HE, E> {
+	fn degree(&self) -> JacobiFineDeg {
+		debug_assert_eq!(self.num_verts() % 2, 0);
+		JacobiFineDeg {
+			deg: self.num_verts() / 2,
+			legs: self.vertices.iter()
+				.filter(|(order, _)| order.len() == 1)
+				.count()
+		}
+	}
+}
+
 impl CombEnum<JacobiDeg> for EmbGraph {
 	type Iter = Box<dyn Iterator<Item=Self> + Sync + Send>;
 	fn iterate_deg_inner(degree: JacobiDeg) -> Self::Iter {
@@ -653,6 +665,38 @@ impl CombEnum<JacobiDeg> for EmbGraph {
 		)
 	}
 	fn count_deg(_degree: JacobiDeg) -> Option<usize> {
+		// TODO
+		None
+	}
+}
+impl CombEnum<JacobiFineDeg> for EmbGraph {
+	type Iter = Box<dyn Iterator<Item=Self> + Sync + Send>;
+	fn iterate_deg_inner(degree: JacobiFineDeg) -> Self::Iter {
+		Box::new(
+			MGraph::iterate_deg_inner(degree)
+				.map(|graph| Self::from_multi(graph))
+				// permutations of half-edge orders
+				.flat_map(|base| {
+					let graphs: CombSet<_> = base.vertices.iter()
+						.enumerate()
+						.filter(|(_, (order, ()))| order.len() > 1)
+						.map(|(v, (order, ()))| {
+							order.permutations().map(move |order| (v, order))
+						})
+						.multi_cartesian_product()
+						.map(|changes| {
+							let mut g = base.clone();
+							for (v, order) in changes {
+								g.vertices[v].0 = order;
+							}
+							g
+						})
+						.collect();
+					graphs
+				})
+		)
+	}
+	fn count_deg(_degree: JacobiFineDeg) -> Option<usize> {
 		// TODO
 		None
 	}

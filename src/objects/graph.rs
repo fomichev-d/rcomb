@@ -21,6 +21,16 @@ use itertools::*;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct JacobiDeg(pub usize);
 
+/// Used for multigraphs and embedded graphs.
+/// Vertex degrees either 1 or 3, every component has vertices of degree 1.
+/// Here we also exclude diagrams with loops as these are zero modulo AS.
+/// We also only generate connected graphs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct JacobiFineDeg {
+	pub deg: usize,
+	pub legs: usize
+}
+
 // petgraph integration
 
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
