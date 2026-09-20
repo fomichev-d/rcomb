@@ -201,12 +201,19 @@ impl<V> MGraph<V> {
 			.map(|edges| edges.into_iter().collect::<HashMap<_, _>>())
 			.map(|edges| self.edge_subgraph(|e, _| edges[&e]))
 	}
-
 }
 impl MGraph {
 	#[inline]
 	pub fn add_vertex(&mut self) -> NodeIndex {
 		self.graph.add_vertex()
+	}
+	pub fn automorphisms(&self) -> Vec<Vec<usize>> {
+		petgraph::algo::isomorphism::subgraph_isomorphisms_iter(
+			&&self.graph.0,
+			&&self.graph.0,
+			&mut |_, _| { true },
+			&mut |n1, n2| { n1 == n2 }
+		).into_iter().flatten().collect()
 	}
 }
 impl Display for MGraph {
