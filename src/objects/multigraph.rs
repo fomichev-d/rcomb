@@ -338,6 +338,7 @@ impl CombEnum<JacobiFineDeg> for MGraph {
 	fn iterate_deg_inner(degree: JacobiFineDeg) -> Self::Iter {
 		let JacobiFineDeg { deg, legs } = degree;
 		let e = deg * 3 - legs;
+		let e_min = e / 2 + e % 1;
 		let n = deg * 2;
 		if n == 0 && legs == 0 {
 			return Box::new(std::iter::once(MGraph::default()));
@@ -348,7 +349,7 @@ impl CombEnum<JacobiFineDeg> for MGraph {
 		let geng_stdout = geng
 			.arg("-qcd1D3")
 			.arg(n.to_string())
-			.arg(format!("0:{}", e))
+			.arg(format!("{}:{}", e_min, e))
 			.stdout(std::process::Stdio::piped())
 			.stderr(std::process::Stdio::null())
 			.spawn()
@@ -396,23 +397,6 @@ impl CombEnum<JacobiFineDeg> for MGraph {
 					graph.vertices()
 						.map(|(v, _)| graph.vertex_degree(v))
 						.all(|deg| deg == 1 || deg == 3)
-				})
-				// filter out graphs with the wrong number of legs
-				.filter(move |graph| {
-					legs == graph.vertices()
-						.filter(|&(v, _)| graph.vertex_degree(v) == 1)
-						.count()
-				})
-				// each connected component must have a degree 1 vertex
-				.filter(|graph| {
-					let mut scc = petgraph::algo::TarjanScc::new();
-					let mut good = true;
-					scc.run(&graph.graph.0, |comp: &[NodeIndex]| {
-						good &= comp.iter().any(|&v| {
-							graph.vertex_degree(v) == 1
-						});
-					});
-					good
 				})
 		)
 	}

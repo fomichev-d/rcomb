@@ -438,7 +438,8 @@ fn emb_graph_match_modulo_as(
 					hemap_unchecked.insert(v_order.data[i], u_order.data[(deg + offset - i) % deg]);
 				}
 				if let Some(sign) = emb_graph_match_modulo_as(g1, g2, vmap, hemap.clone(), hemap_unchecked) {
-					return Some(-sign);
+					// the sign is flipped in the nested call already
+					return Some(sign);
 				}
 			}
 		}
