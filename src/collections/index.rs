@@ -291,9 +291,9 @@ impl<G: CombEq + Clone, Strategy: IndexStrategy> CombIndex<G, Strategy> {
 	pub fn iter(&self) -> <&Self as IntoIterator>::IntoIter {
 		self.into_iter()
 	}
-	pub fn retain<F: Fn(&G) -> bool>(&mut self, f: F) {
+	pub fn retain<F: Fn(usize, &G) -> bool>(&mut self, f: F) {
 		let removed: Vec<usize> = self.iter()
-			.filter(|(_, g)| f(g))
+			.filter(|&(i, g)| !f(i, g))
 			.map(|(i, _)| i)
 			.collect();
 		removed.into_iter().for_each(|i| { self.remove_idx(i); });
@@ -347,9 +347,9 @@ impl<G: CombEq + Clone + Send + Sync, Strategy: IndexStrategy> CombIndex<G, Stra
 			None
 		}
 	}
-	pub fn par_retain<F: Fn(&G) -> bool + Sync>(&mut self, f: F) {
+	pub fn par_retain<F: Fn(usize, &G) -> bool + Sync>(&mut self, f: F) {
 		let removed: Vec<usize> = self.par_iter()
-			.filter(|(_, g)| f(g))
+			.filter(|&(i, g)| !f(i, g))
 			.map(|(i, _)| i)
 			.collect();
 		removed.into_iter().for_each(|i| { self.par_remove_idx(i); });
