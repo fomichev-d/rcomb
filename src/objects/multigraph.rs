@@ -5,7 +5,7 @@ use crate::objects::graph::*;
 
 #[cfg(feature = "geng")]
 use std::io::{BufReader, BufRead};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::{Debug, Display};
 use std::num::ParseIntError;
 use std::ops::*;
@@ -410,8 +410,35 @@ impl CombEnum<JacobiFineDeg> for MGraph {
 impl CombEq for MGraph {
 	type Certificate = Vec<usize>;
 	fn hash(&self) -> Vec<usize> {
-		// TODO: a finer hash!
-		self.graph.graph_hash()
+		let n = self.num_verts();
+		let mut adj: Vec<Vec<usize>> = vec![vec![]; n];
+		for (u, v) in self.edges() {
+			let u = u.index();
+			let v = v.index();
+			adj[u].push(v);
+			adj[v].push(u);
+		}
+		let mut hashes: Vec<Vec<usize>> = Vec::with_capacity(n);
+		for a in 0..n {
+			let mut dist = vec![usize::MAX; n];
+			dist[a] = 0;
+			let mut queue = VecDeque::new();
+			queue.push_back(a);
+			let mut hash = vec![0; n];
+			hash[0] = 1;
+			while let Some(v) = queue.pop_front() {
+				for &u in &adj[v] {
+					if dist[u] == usize::MAX {
+						dist[u] = dist[v] + 1;
+						hash[dist[u]] += 1;
+						queue.push_back(u);
+					}
+				}
+			}
+			hashes.push(hash);
+		}
+		hashes.sort_unstable();
+		hashes.into_iter().flatten().collect()
 	}
 	fn is_isomorphic(&self, other: &Self) -> bool {
 		petgraph::algo::is_isomorphic_matching(
