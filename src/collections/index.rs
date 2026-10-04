@@ -248,6 +248,10 @@ impl<G: CombEq + Clone, Strategy: IndexStrategy> CombIndex<G, Strategy> {
 		self.keys.get(g).copied()
 	}
 	#[inline]
+	pub fn idx_iso<H: CombEq<G>>(&self, g: &H) -> Option<(usize, H::Certificate)> {
+		self.keys.get_iso(g).map(|(&i, iso)| (i, iso))
+	}
+	#[inline]
 	pub fn val(&self, i: usize) -> Option<&G> {
 		self.vals.get(&i)
 	}
@@ -309,6 +313,10 @@ impl<G: CombEq + Clone + Send + Sync, Strategy: IndexStrategy> CombIndex<G, Stra
 	#[inline]
 	pub fn par_idx<H: CombEq<G> + Sync>(&self, g: &H) -> Option<usize> {
 		self.keys.par_get(g).copied()
+	}
+	#[inline]
+	pub fn par_idx_iso<H: CombEq<G> + Sync>(&self, g: &H) -> Option<(usize, H::Certificate)> where H::Certificate: Send {
+		self.keys.par_get_iso(g).map(|(&i, iso)| (i, iso))
 	}
 	#[inline]
 	pub fn par_insert<H: CombEq<G> + Into<G> + Sync>(&mut self, g: H) -> usize {

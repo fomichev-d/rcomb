@@ -496,6 +496,24 @@ impl<G: CombEq, T> CombMap<G, T> {
 			None => { None }
 		}
 	}
+	/// Returns a reference to the value corresponding to the key together with an isomorphism certificate.
+	///
+	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](Self::insert_unchecked)), an arbitrary one is picked.
+	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
+	pub fn get_iso<H: CombEq<G>>(&self, g: &H) -> Option<(&T, H::Certificate)> {
+		let key = g.hash();
+		match self.buckets.get(&key) {
+			Some(bucket) => {
+				for (g_other, val) in bucket.iter() {
+					if let Some(iso) = g.find_isomorphism(g_other) {
+						return Some((val, iso));
+					}
+				}
+				None
+			}
+			None => { None }
+		}
+	}
 	/// Returns a mutable reference to the value corresponding to the key.
 	///
 	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](Self::insert_unchecked)), an arbitrary one is picked.
@@ -508,6 +526,25 @@ impl<G: CombEq, T> CombMap<G, T> {
 				for (g_other, val) in bucket.iter_mut() {
 					if g.is_isomorphic(g_other) {
 						return Some(val);
+					}
+				}
+				None
+			}
+			None => { None }
+		}
+	}
+	/// Returns a mutable reference to the value corresponding to the key together with an isomorphism certificate.
+	///
+	/// If there are several entries with isomorphic keys (e.g. after [`insert_unchecked`](Self::insert_unchecked)), an arbitrary one is picked.
+	/// To restore key uniqueness, use [`dedup`](Self::dedup) or [`par_dedup`](Self::par_dedup).
+	#[inline]
+	pub fn get_iso_mut<H: CombEq<G>>(&mut self, g: &H) -> Option<(&mut T, H::Certificate)> {
+		let key = g.hash();
+		match self.buckets.get_mut(&key) {
+			Some(bucket) => {
+				for (g_other, val) in bucket.iter_mut() {
+					if let Some(iso) = g.find_isomorphism(g_other) {
+						return Some((val, iso));
 					}
 				}
 				None
@@ -670,6 +707,19 @@ impl<G: CombEq + Send + Sync, T: Send + Sync> CombMap<G, T> {
 		}
 	}
 	#[inline]
+	pub fn par_get_iso<H: CombEq<G> + Sync>(&self, g: &H) -> Option<(&T, H::Certificate)> where H::Certificate: Send {
+		let key = g.hash();
+		match self.buckets.get(&key) {
+			Some(bucket) => {
+				bucket.par_iter()
+					.find_map_any(|(g_other, val)| {
+						g.find_isomorphism(g_other).map(|iso| (val, iso))
+					})
+			}
+			None => { None }
+		}
+	}
+	#[inline]
 	pub fn par_get_mut<H: CombEq<G> + Sync>(&mut self, g: &H) -> Option<&mut T> {
 		let key = g.hash();
 		match self.buckets.get_mut(&key) {
@@ -677,6 +727,19 @@ impl<G: CombEq + Send + Sync, T: Send + Sync> CombMap<G, T> {
 				bucket.par_iter_mut()
 					.find_any(|(g_other, _)| g.is_isomorphic(g_other))
 					.map(|(_, val)| val)
+			}
+			None => { None }
+		}
+	}
+	#[inline]
+	pub fn par_get_iso_mut<H: CombEq<G> + Sync>(&mut self, g: &H) -> Option<(&mut T, H::Certificate)> where H::Certificate: Send {
+		let key = g.hash();
+		match self.buckets.get_mut(&key) {
+			Some(bucket) => {
+				bucket.par_iter_mut()
+					.find_map_any(|(g_other, val)| {
+						g.find_isomorphism(g_other).map(|iso| (val, iso))
+					})
 			}
 			None => { None }
 		}
