@@ -399,6 +399,81 @@ fn emb_graph_match_modulo_as(
 		vmap[u] == v
 	};
 	if hemap_unchecked.len() == 0 {
+		// match vertices of degree 1 and vmap-trivial choices
+		let mut sign = 1;
+		for v in 0..g1.num_verts() {
+			let u = vmap[v];
+			let v_order = &g1.vertices[v].0.data;
+			let u_order = &g2.vertices[u].0.data;
+			let deg = g1.vertex_degree(v);
+			if deg == 1 {
+				let he1 = v_order[0];
+				let he2 = u_order[0];
+				hemap.insert(he1, he2);
+				hemap_unchecked.remove(&he1);
+				let he1_other = g1.he_other(he1);
+				let he2_other = g2.he_other(he2);
+				if !hemap.contains_key(&he1_other) {
+					hemap_unchecked.insert(he1_other, he2_other);
+				}
+			} else if deg > 1 {
+				let n1: Vec<_> = v_order.iter()
+					.map(|&he| g1.he_vertex(g1.he_other(he)))
+					.collect();
+				let n2: Vec<_> = u_order.iter()
+					.map(|&he| g2.he_vertex(g2.he_other(he)))
+					.collect();
+				let direct: Vec<_> = (0..deg)
+					.filter(|&offset| {
+						(0..deg).all(|i| vmap[n1[i]] == n2[(offset + i) % deg])
+					})
+					.collect();
+				let reverse: Vec<_> = (0..deg)
+					.filter(|&offset| {
+						(0..deg).all(|i| vmap[n1[i]] == n2[(deg + offset - i) % deg])
+					})
+					.collect();
+				match (direct.len(), reverse.len()) {
+					(1, 0) => {
+						let offset = direct[0];
+						for i in 0..deg {
+							let he1 = v_order[i];
+							let he2 = u_order[(offset + i) % deg];
+							hemap.insert(he1, he2);
+							hemap_unchecked.remove(&he1);
+							let he1_other = g1.he_other(he1);
+							let he2_other = g2.he_other(he2);
+							if !hemap.contains_key(&he1_other) {
+								hemap_unchecked.insert(he1_other, he2_other);
+							}
+						}
+					}
+					(0, 1) => {
+						let offset = reverse[0];
+						for i in 0..deg {
+							let he1 = v_order[i];
+							let he2 = u_order[(deg + offset - i) % deg];
+							hemap.insert(he1, he2);
+							hemap_unchecked.remove(&he1);
+							let he1_other = g1.he_other(he1);
+							let he2_other = g2.he_other(he2);
+							if !hemap.contains_key(&he1_other) {
+								hemap_unchecked.insert(he1_other, he2_other);
+							}
+						}
+						sign *= -1;
+					}
+					(0, 0) => { return None; }
+					_ => {}
+				}
+			}
+		}
+		if hemap.len() == g1.half_edges.len() {
+			return Some(sign);
+		}
+		if hemap_unchecked.len() > 0 {
+			return emb_graph_match_modulo_as(g1, g2, vmap, hemap, hemap_unchecked).map(|s| s * sign);
+		}
 		// match a new vertex
 		let v = (0..g1.num_verts())
 			.filter(|&v| {
@@ -417,7 +492,7 @@ fn emb_graph_match_modulo_as(
 		for offset in 0..deg {
 			let mut hemap_unchecked = HashMap::new();
 			for i in 0..deg {
-				if !v_check(v_order.data[i], u_order.data[(offset + i) % deg]) {
+				if vmap[g1.he_vertex(g1.he_other(v_order.data[i]))] != g2.he_vertex(g2.he_other(u_order.data[(offset + i) % deg])) {
 					continue 'direct;
 				}
 				hemap_unchecked.insert(v_order.data[i], u_order.data[(offset + i) % deg]);
@@ -432,7 +507,7 @@ fn emb_graph_match_modulo_as(
 			for offset in 0..deg {
 				let mut hemap_unchecked = HashMap::new();
 				for i in 0..deg {
-					if !v_check(v_order.data[i], u_order.data[(deg + offset - i) % deg]) {
+					if vmap[g1.he_vertex(g1.he_other(v_order.data[i]))] != g2.he_vertex(g2.he_other(u_order.data[(deg + offset - i) % deg])) {
 						continue 'reverse;
 					}
 					hemap_unchecked.insert(v_order.data[i], u_order.data[(deg + offset - i) % deg]);
