@@ -3,7 +3,7 @@ use rcomb::collections::map::*;
 #[cfg(feature = "rayon")]
 use rcomb::rayon::iter::*;
 
-use std::hint::black_box;
+use std::{hash::Hasher, hint::black_box};
 use std::time::*;
 
 use criterion::{criterion_main, criterion_group, Criterion};
@@ -24,7 +24,7 @@ fn busy_sleep(dur: Duration) -> Duration {
 struct TestStruct(usize);
 impl CombEq for TestStruct {
 	type Certificate = !;
-	fn hash(&self) -> Vec<usize> { vec![self.0 % 6] }
+	fn hash(&self, hasher: &mut impl Hasher) { hasher.write_usize(self.0 % 6); }
 	fn is_isomorphic(&self, other: &Self) -> bool {
 		black_box(busy_sleep(SLEEP));
 		self == other

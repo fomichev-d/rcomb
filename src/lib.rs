@@ -4,6 +4,8 @@
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::manual_is_multiple_of)]
 
+use std::hash::Hasher;
+
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
 pub use rayon;
@@ -49,7 +51,7 @@ pub mod io {
 
 pub trait CombEq<G = Self> {
 	type Certificate;
-	fn hash(&self) -> Vec<usize>;
+	fn hash(&self, hasher: &mut impl Hasher);
 	fn is_isomorphic(&self, other: &G) -> bool;
 	fn find_isomorphism(&self, other: &G) -> Option<Self::Certificate>;
 }

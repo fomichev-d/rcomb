@@ -2,6 +2,7 @@ use crate::*;
 use crate::io::*;
 
 use std::fmt::Display;
+use std::hash::Hash;
 #[cfg(feature = "geng")]
 use std::io::{BufReader, BufRead};
 use std::ops::{Index, IndexMut};
@@ -341,8 +342,8 @@ pub trait EdgeMatch: Eq {}
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl CombEq for Graph {
 	type Certificate = Vec<usize>;
-	fn hash(&self) -> Vec<usize> {
-		self.graph_hash()
+	fn hash(&self, hasher: &mut impl Hasher) {
+		self.graph_hash().hash(hasher)
 	}
 	fn is_isomorphic(&self, other: &Self) -> bool {
 		petgraph::algo::is_isomorphic(&self.0, &other.0)
@@ -359,8 +360,8 @@ impl CombEq for Graph {
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<Ix: IndexType> CombEq<Graph> for UnGraph<(), (), Ix> {
 	type Certificate = Vec<usize>;
-	fn hash(&self) -> Vec<usize> {
-	    self.graph_hash()
+	fn hash(&self, hasher: &mut impl Hasher) {
+	    self.graph_hash().hash(hasher)
 	}
 	fn is_isomorphic(&self, other: &Graph) -> bool {
 		petgraph::algo::is_isomorphic(&self, &other.0)
@@ -378,8 +379,8 @@ impl<Ix: IndexType> CombEq<Graph> for UnGraph<(), (), Ix> {
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<N: NodeMatch> CombEq for Graph<N, ()> {
 	type Certificate = Vec<usize>;
-	fn hash(&self) -> Vec<usize> {
-		self.graph_hash()
+	fn hash(&self, hasher: &mut impl Hasher) {
+		self.graph_hash().hash(hasher)
 	}
 	fn is_isomorphic(&self, other: &Self) -> bool {
 		petgraph::algo::is_isomorphic_matching(
@@ -401,8 +402,8 @@ impl<N: NodeMatch> CombEq for Graph<N, ()> {
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<N: NodeMatch, Ix: IndexType> CombEq<Graph<N, ()>> for UnGraph<N, (), Ix> {
 	type Certificate = Vec<usize>;
-	fn hash(&self) -> Vec<usize> {
-	    self.graph_hash()
+	fn hash(&self, hasher: &mut impl Hasher) {
+	    self.graph_hash().hash(hasher)
 	}
 	fn is_isomorphic(&self, other: &Graph<N, ()>) -> bool {
 		petgraph::algo::is_isomorphic_matching(
@@ -425,8 +426,8 @@ impl<N: NodeMatch, Ix: IndexType> CombEq<Graph<N, ()>> for UnGraph<N, (), Ix> {
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<E: EdgeMatch> CombEq for Graph<(), E> {
 	type Certificate = Vec<usize>;
-	fn hash(&self) -> Vec<usize> {
-		self.graph_hash()
+	fn hash(&self, hasher: &mut impl Hasher) {
+		self.graph_hash().hash(hasher)
 	}
 	fn is_isomorphic(&self, other: &Self) -> bool {
 		petgraph::algo::is_isomorphic_matching(
@@ -448,8 +449,8 @@ impl<E: EdgeMatch> CombEq for Graph<(), E> {
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<E: EdgeMatch, Ix: IndexType> CombEq<Graph<(), E>> for UnGraph<(), E, Ix> {
 	type Certificate = Vec<usize>;
-	fn hash(&self) -> Vec<usize> {
-	    self.graph_hash()
+	fn hash(&self, hasher: &mut impl Hasher) {
+	    self.graph_hash().hash(hasher)
 	}
 	fn is_isomorphic(&self, other: &Graph<(), E>) -> bool {
 		petgraph::algo::is_isomorphic_matching(
@@ -472,8 +473,8 @@ impl<E: EdgeMatch, Ix: IndexType> CombEq<Graph<(), E>> for UnGraph<(), E, Ix> {
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<N: NodeMatch, E: EdgeMatch> CombEq for Graph<N, E> {
 	type Certificate = Vec<usize>;
-	fn hash(&self) -> Vec<usize> {
-		self.graph_hash()
+	fn hash(&self, hasher: &mut impl Hasher) {
+		self.graph_hash().hash(hasher)
 	}
 	fn is_isomorphic(&self, other: &Self) -> bool {
 		petgraph::algo::is_isomorphic_matching(
@@ -495,8 +496,8 @@ impl<N: NodeMatch, E: EdgeMatch> CombEq for Graph<N, E> {
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl<N: NodeMatch, E: EdgeMatch, Ix: IndexType> CombEq<Graph<N, E>> for UnGraph<N, E, Ix> {
 	type Certificate = Vec<usize>;
-	fn hash(&self) -> Vec<usize> {
-	    self.graph_hash()
+	fn hash(&self, hasher: &mut impl Hasher) {
+	    self.graph_hash().hash(hasher)
 	}
 	fn is_isomorphic(&self, other: &Graph<N, E>) -> bool {
 		petgraph::algo::is_isomorphic_matching(

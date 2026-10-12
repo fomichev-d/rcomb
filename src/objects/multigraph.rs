@@ -3,6 +3,7 @@ use crate::objects::embedded_graph::EmbGraph;
 use crate::*;
 use crate::objects::graph::*;
 
+use std::hash::{Hash, Hasher};
 #[cfg(feature = "geng")]
 use std::io::{BufReader, BufRead};
 use std::collections::{HashMap, VecDeque};
@@ -409,7 +410,7 @@ impl CombEnum<JacobiFineDeg> for MGraph {
 #[cfg_attr(docsrs, doc(cfg(feature = "petgraph")))]
 impl CombEq for MGraph {
 	type Certificate = Vec<usize>;
-	fn hash(&self) -> Vec<usize> {
+	fn hash(&self, hasher: &mut impl Hasher) {
 		let n = self.num_verts();
 		let mut adj: Vec<Vec<usize>> = vec![vec![]; n];
 		for (u, v) in self.edges() {
@@ -438,7 +439,8 @@ impl CombEq for MGraph {
 			hashes.push(hash);
 		}
 		hashes.sort_unstable();
-		hashes.into_iter().flatten().collect()
+		// hashes.into_iter().flatten().collect()
+		hashes.hash(hasher);
 	}
 	fn is_isomorphic(&self, other: &Self) -> bool {
 		petgraph::algo::is_isomorphic_matching(

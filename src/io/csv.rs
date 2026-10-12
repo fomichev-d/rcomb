@@ -217,7 +217,7 @@ pub trait CollectionCsvExt<G, T>: Sized {
 	fn par_read_csv(config: CsvConfig<G, T>) -> std::io::Result<Self> where G: CombCsv + Send + Sync, T: Send + Sync;
 	#[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 	#[cfg(feature = "rayon")]
-	fn save_ord_csv(&self, config: CsvConfig<G, T>) -> std::io::Result<()> where G: CombCsv + CombEnum<usize> + Send + Sync, G::Iter: Send + Sync, T: Send + Sync;
+	fn save_ord_csv(&self, config: CsvConfig<G, T>) -> std::io::Result<()> where G: CombCsv + CombEnum<usize> + Send + Sync, G::Iter: Send + Sync, T: Send + Sync, Self: Sync;
 	#[cfg(not(feature = "rayon"))]
 	fn save_ord_csv(&self, config: CsvConfig<G, T>) -> std::io::Result<()> where G: CombCsv + CombEnum<usize>;
 }

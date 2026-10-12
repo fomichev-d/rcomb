@@ -6,6 +6,7 @@ use crate::objects::cyclic_order::*;
 
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
+use std::hash::Hash;
 use std::ops::Range;
 
 use fixedbitset::FixedBitSet;
@@ -659,18 +660,18 @@ fn emb_graph_match(g1: &EmbGraph, g2: &EmbGraph, mut hemap: HashMap<usize, usize
 }
 impl CombEq for EmbGraph {
 	type Certificate = !;
-	fn hash(&self) -> Vec<usize> {
-		self.graph_hash()
+	fn hash(&self, hasher: &mut impl Hasher) {
+		self.graph_hash().hash(hasher)
 	}
 	fn is_isomorphic(&self, other: &Self) -> bool {
 		let mut comps = self.connected_components_subgraphs();
 		let mut other_comps = other.connected_components_subgraphs();
 		if comps.len() != other_comps.len() { return false; }
 		while let Some(comp) = comps.pop() {
-			let hash = comp.hash();
+			let hash = comp.graph_hash();
 			let mut found: Option<usize> = None;
 			for (i, other_comp) in other_comps.iter().enumerate() {
-				if hash != other_comp.hash() { continue; }
+				if hash != other_comp.graph_hash() { continue; }
 				if emb_graph_match(&comp, other_comp, HashMap::default(), HashMap::default()) {
 					found = Some(i);
 					break;
