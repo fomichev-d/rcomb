@@ -5,6 +5,7 @@
 #![allow(clippy::manual_is_multiple_of)]
 
 use std::hash::Hasher;
+use std::ops::Deref;
 
 #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
 #[cfg(feature = "rayon")]
@@ -54,6 +55,18 @@ pub trait CombEq<G = Self> {
 	fn hash(&self, hasher: &mut impl Hasher);
 	fn is_isomorphic(&self, other: &G) -> bool;
 	fn find_isomorphism(&self, other: &G) -> Option<Self::Certificate>;
+}
+impl<G, T: Deref + ?Sized> CombEq<G> for T where T::Target: CombEq<G> {
+	type Certificate = <T::Target as CombEq<G>>::Certificate;
+	fn hash(&self, hasher: &mut impl Hasher) {
+		self.hash(hasher);
+	}
+	fn is_isomorphic(&self, other: &G) -> bool {
+		self.is_isomorphic(other)
+	}
+	fn find_isomorphism(&self, other: &G) -> Option<Self::Certificate> {
+		self.find_isomorphism(other)
+	}
 }
 
 pub trait CombGrad<T: Copy + Eq + Send + Sync = usize> {

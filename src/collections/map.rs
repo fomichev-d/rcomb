@@ -993,10 +993,12 @@ impl<G: Eq + Hash, T> CollectionCsvExt<G, T> for HashMap<G, T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	impl CombEq for usize {
+	#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+	struct X(usize);
+	impl CombEq for X {
 		type Certificate = !;
-		fn hash(&self, hasher: &mut impl Hasher) { hasher.write_usize(self % 2) }
-		fn is_isomorphic(&self, other: &Self) -> bool { self == other }
+		fn hash(&self, hasher: &mut impl Hasher) { hasher.write_usize(self.0 % 2) }
+		fn is_isomorphic(&self, other: &Self) -> bool { self.0 == other.0 }
 		fn find_isomorphism(&self, _other: &Self) -> Option<Self::Certificate> {
 			unimplemented!()
 		}
@@ -1006,39 +1008,39 @@ mod tests {
 	}
 	#[test]
 	fn test_map() {
-		let mut map = CombMap::<usize, usize>::new();
+		let mut map = CombMap::<X, usize>::new();
 		assert_eq!(map.len(), 0);
-		assert!(map.insert(0, 1).is_none());
+		assert!(map.insert(X(0), 1).is_none());
 		assert_eq!(map.len(), 1);
-		assert!(map.insert(1, 2).is_none());
+		assert!(map.insert(X(1), 2).is_none());
 		assert_eq!(map.len(), 2);
-		assert!(map.insert(2, 4).is_none());
+		assert!(map.insert(X(2), 4).is_none());
 		assert_eq!(map.len(), 3);
-		assert_eq!(map.get(&0), Some(&1));
-		assert_eq!(map.get(&1), Some(&2));
-		assert_eq!(map.get(&2), Some(&4));
-		assert_eq!(map.insert(2, 3), Some(4));
-		assert_eq!(map.get(&2), Some(&3));
+		assert_eq!(map.get(&X(0)), Some(&1));
+		assert_eq!(map.get(&X(1)), Some(&2));
+		assert_eq!(map.get(&X(2)), Some(&4));
+		assert_eq!(map.insert(X(2), 3), Some(4));
+		assert_eq!(map.get(&X(2)), Some(&3));
 		assert_eq!(map.len(), 3);
 		map.clear();
 		assert_eq!(map.len(), 0);
-		for i in 0..9 { map.insert(i, i % 3); }
+		for i in 0..9 { map.insert(X(i), i % 3); }
 		assert_eq!(map.len(), 9);
 		map.retain(|_, v| *v == 0);
 		assert_eq!(map.len(), 3);
-		let mut keys: Vec<usize> = map.keys().copied().collect();
+		let mut keys: Vec<X> = map.keys().copied().collect();
 		keys.sort();
-		assert_eq!(keys, vec![0, 3, 6]);
-		map.extend(keys.iter().map(|&i| (i + 1, 1)));
+		assert_eq!(keys, vec![X(0), X(3), X(6)]);
+		map.extend(keys.iter().map(|&i| (X(i.0 + 1), 1)));
 		assert_eq!(map.len(), 6);
-		map.insert_unchecked(0, 111);
+		map.insert_unchecked(X(0), 111);
 		assert_eq!(map.len(), 7);
-		map.extend_unchecked(keys.iter().map(|&i| (i + 1, 222)));
+		map.extend_unchecked(keys.iter().map(|&i| (X(i.0 + 1), 222)));
 		assert_eq!(map.len(), 10);
-		assert_eq!(map.remove(&6), Some(0));
+		assert_eq!(map.remove(&X(6)), Some(0));
 		assert_eq!(map.len(), 9);
 		map.dedup();
 		assert_eq!(map.len(), 5);
-		assert_eq!(map.contains_key(&6), false);
+		assert_eq!(map.contains_key(&X(6)), false);
 	}
 }
