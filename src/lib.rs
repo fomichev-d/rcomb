@@ -56,16 +56,16 @@ pub trait CombEq<G = Self> {
 	fn is_isomorphic(&self, other: &G) -> bool;
 	fn find_isomorphism(&self, other: &G) -> Option<Self::Certificate>;
 }
-impl<G, T: Deref + ?Sized> CombEq<G> for T where T::Target: CombEq<G> {
-	type Certificate = <T::Target as CombEq<G>>::Certificate;
+impl<T: Deref> CombEq for T where T::Target: CombEq + Sized {
+	type Certificate = <T::Target as CombEq>::Certificate;
 	fn hash(&self, hasher: &mut impl Hasher) {
-		self.hash(hasher);
+		self.deref().hash(hasher);
 	}
-	fn is_isomorphic(&self, other: &G) -> bool {
-		self.is_isomorphic(other)
+	fn is_isomorphic(&self, other: &Self) -> bool {
+		self.deref().is_isomorphic(other.deref())
 	}
-	fn find_isomorphism(&self, other: &G) -> Option<Self::Certificate> {
-		self.find_isomorphism(other)
+	fn find_isomorphism(&self, other: &Self) -> Option<Self::Certificate> {
+		self.deref().find_isomorphism(other.deref())
 	}
 }
 
